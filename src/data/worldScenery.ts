@@ -131,7 +131,9 @@ function build() {
     patches.push({ x, z, radius, rot: rand() * Math.PI, seed: Math.floor(rand() * 1e6), deep: rand() > 0.6 })
   }
 
-  for (const p of patches) {
+  // Each bed has one accent colour (1–4) mixed with white (0), so colours read as clusters.
+  for (const [bed, p] of patches.entries()) {
+    const accent = 1 + (bed % 4)
     const count = Math.round(p.radius * 4)
     for (let k = 0; k < count; k++) {
       const a = rand() * Math.PI * 2
@@ -139,7 +141,7 @@ function build() {
       const x = p.x + Math.cos(a) * rr
       const z = p.z + Math.sin(a) * rr
       if (distanceToPaths({ x, z }) < 0.85 || distanceToBenches(x, z) < 0.9) continue
-      if (rand() < 0.3) flowers.push({ x, z, scale: 0.7 + rand() * 0.6, tint: rand() > 0.55 ? 1 : 0 })
+      if (rand() < 0.3) flowers.push({ x, z, scale: 0.7 + rand() * 0.6, tint: rand() > 0.4 ? accent : 0 })
       else tufts.push({ x, z, scale: 0.7 + rand() * 0.7, tint: Math.floor(rand() * 2) })
     }
   }

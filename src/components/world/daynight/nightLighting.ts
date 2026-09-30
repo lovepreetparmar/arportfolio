@@ -15,15 +15,16 @@ type Entry = {
   base: number
   /** Value at channel = 0. */
   floor: number
-  /** Daylight emissive colour, warmed towards lamplight as it gets dark. */
+  /** Daylight emissive and surface colour, warmed towards lamplight as it gets dark. */
   dayEmissive: THREE.Color | null
+  dayColor: THREE.Color | null
   nightEmissive: THREE.Color
 }
 
 const entries = new Set<Entry>()
-/** Pale daylight glass reads as white when bright; after dark it shifts to warm lamplight. */
+/** Sky-reflecting daylight glass; after dark it becomes warm amber lamplight. */
 const NIGHT_GLASS = new THREE.Color('#ffb56a')
-const NIGHT_GLASS_MIX = 0.55
+const NIGHT_GLASS_MIX = 0.85
 
 export function registerNightMaterial(
   material: THREE.Material,
@@ -37,8 +38,9 @@ export function registerNightMaterial(
 ) {
   const emissive = (material as THREE.MeshStandardMaterial).emissive
   const dayEmissive = prop === 'emissiveIntensity' && channel !== 'signs' && emissive ? emissive.clone() : null
+  const dayColor = dayEmissive && channel === 'windows' ? (material as THREE.MeshStandardMaterial).color.clone() : null
   const nightEmissive = nightColor ? new THREE.Color(nightColor) : NIGHT_GLASS
-  const entry: Entry = { material, channel, prop, base, floor, dayEmissive, nightEmissive }
+  const entry: Entry = { material, channel, prop, base, floor, dayEmissive, dayColor, nightEmissive }
   entries.add(entry)
   return () => {
     entries.delete(entry)
@@ -57,6 +59,7 @@ export function applyNightLighting(state: DayNightState) {
       const m = e.material as THREE.MeshStandardMaterial
       m.emissiveIntensity = value
       if (e.dayEmissive) m.emissive.copy(e.dayEmissive).lerp(e.nightEmissive, warmth)
+      if (e.dayColor) m.color.copy(e.dayColor).lerp(e.nightEmissive, warmth)
     }
   }
 }

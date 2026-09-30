@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import type { Project } from '../../../data/projects'
 import type { ProjectWorldConfig } from '../../../data/projectWorld'
-import { ARCHETYPE_FOOTPRINT, type PavilionStyle } from '../../../data/worldLayout'
+import { ARCHETYPE_FOOTPRINT, type PavilionStyle, type PavilionTone } from '../../../data/worldLayout'
 import { WindowSpill } from '../daynight/BuildingLighting'
 import { WORLD_PALETTE, worldMat } from '../worldMaterials'
 import { Door, EaselPoster, EntranceApron, GableRoof, Planter, SignBoard, signName, Window } from './BuildingKit'
@@ -10,50 +10,49 @@ const { width: W, depth: D } = ARCHETYPE_FOOTPRINT.pavilion
 const H = 2.5
 const FZ = D / 2
 
-const STYLES: Record<
-  PavilionStyle,
-  { wall: string; base: string; roof: string; door: string; frame: string; flat: boolean; pot: string }
-> = {
-  plaster: {
-    wall: '#efe4d3',
-    base: '#d9ccb8',
-    roof: WORLD_PALETTE.terracottaDeep,
-    door: WORLD_PALETTE.sage,
-    frame: WORLD_PALETTE.charcoal,
-    flat: false,
-    pot: WORLD_PALETTE.terracotta,
-  },
-  wood: {
-    wall: '#bf9f7c',
-    base: WORLD_PALETTE.stoneDark,
-    roof: WORLD_PALETTE.slate,
-    door: WORLD_PALETTE.woodDark,
-    frame: WORLD_PALETTE.ivory,
-    flat: false,
-    pot: WORLD_PALETTE.charcoal,
-  },
-  stone: {
-    wall: '#dcd3c4',
-    base: '#c9bfae',
-    roof: '#e7dfd2',
-    door: WORLD_PALETTE.charcoal,
-    frame: WORLD_PALETTE.charcoal,
-    flat: true,
-    pot: WORLD_PALETTE.stoneDark,
-  },
+type Tone = {
+  wall: string
+  base: string
+  /** Pitched roof, or the parapet cap on flat-roofed stone pavilions. */
+  roof: string
+  door: string
+  frame: string
+  pot: string
+  /** Board battens on timber pavilions. */
+  slat?: string
 }
 
-/** Compact reusable project building; the style varies the palette and roof. */
+const TRIM = '#f5ecdc'
+
+/** Curated colourways: muted, painted and harmonious, each wall paired with its roof. */
+const TONES: Record<PavilionTone, Tone> = {
+  cream: { wall: '#f3e5cc', base: '#d9c3a0', roof: '#b0573a', door: '#6f8f62', frame: WORLD_PALETTE.charcoal, pot: WORLD_PALETTE.terracotta },
+  sage: { wall: '#b7c9a0', base: '#95a881', roof: '#6a4631', door: '#6a4631', frame: TRIM, pot: '#eadcc4' },
+  coral: { wall: '#e8ad99', base: '#cf907c', roof: '#7c706b', door: '#46657a', frame: TRIM, pot: '#eadcc4' },
+  yellow: { wall: '#f0cd7f', base: '#d3ad62', roof: '#56392a', door: '#56392a', frame: TRIM, pot: '#56392a' },
+  honey: { wall: '#c9955f', base: WORLD_PALETTE.stoneDark, roof: '#4e6179', door: WORLD_PALETTE.woodDark, frame: TRIM, pot: WORLD_PALETTE.charcoal, slat: '#b07c4a' },
+  walnut: { wall: '#8e6143', base: '#9c8d7c', roof: '#a2473a', door: '#3b281d', frame: '#f2e3c8', pot: '#a2473a', slat: '#77502f' },
+  blue: { wall: '#a8c0d2', base: '#8ca5b8', roof: '#f3ebdd', door: '#2e3e52', frame: '#f3ebdd', pot: '#f3ebdd' },
+  lavender: { wall: '#c6badb', base: '#a99cc0', roof: '#f4eef3', door: '#4b4064', frame: '#f4eef3', pot: '#f4eef3' },
+  sand: { wall: '#e5d3b5', base: '#c9b391', roof: '#f6efe2', door: '#9a4634', frame: WORLD_PALETTE.charcoal, pot: '#9a4634' },
+}
+
+const DEFAULT_TONE: Record<PavilionStyle, PavilionTone> = { plaster: 'cream', wood: 'honey', stone: 'sand' }
+
+/** Compact reusable project building; the style sets its construction, the tone its colours. */
 export function ProjectPavilion({
   project,
   config,
   style = 'plaster',
+  tone,
 }: {
   project: Project
   config: ProjectWorldConfig
   style?: PavilionStyle
+  tone?: PavilionTone
 }) {
-  const s = STYLES[style]
+  const s = TONES[tone ?? DEFAULT_TONE[style]]
+  const flat = style === 'stone'
   const signStyle = useMemo(
     () => ({
       background: WORLD_PALETTE.ivory,
@@ -74,12 +73,12 @@ export function ProjectPavilion({
       </mesh>
       {style === 'wood' &&
         Array.from({ length: 9 }, (_, i) => (
-          <mesh key={i} position={[-W / 2 + 0.2 + i * 0.4, H / 2 + 0.16, FZ + 0.006]} material={worldMat('#a98a68', 0.9)}>
+          <mesh key={i} position={[-W / 2 + 0.2 + i * 0.4, H / 2 + 0.16, FZ + 0.006]} material={worldMat(s.slat ?? s.base, 0.9)}>
             <boxGeometry args={[0.025, H - 0.32, 0.01]} />
           </mesh>
         ))}
 
-      {s.flat ? (
+      {flat ? (
         <>
           <mesh position={[0, H + 0.2, 0]} material={worldMat(s.roof, 0.9)} castShadow>
             <boxGeometry args={[W + 0.2, 0.4, D + 0.2]} />

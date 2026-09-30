@@ -71,7 +71,7 @@ export function ProjectLocation({ project, onSelect }: ProjectLocationProps) {
         {slot.archetype === 'boutique' && <JewelleryBoutique project={project} config={config} />}
         {slot.archetype === 'kitchen' && <FoodKitchen project={project} config={config} />}
         {slot.archetype === 'studio' && <DesignStudio project={project} config={config} />}
-        {slot.archetype === 'pavilion' && <ProjectPavilion project={project} config={config} style={slot.style} />}
+        {slot.archetype === 'pavilion' && <ProjectPavilion project={project} config={config} style={slot.style} tone={slot.tone} />}
 
         <Html
           position={[0, LABEL_HEIGHT[slot.archetype], fp.depth / 2]}

@@ -1,23 +1,24 @@
 import { useFrame, useThree } from '@react-three/fiber'
 import { useRef } from 'react'
 import * as THREE from 'three'
-import { useReducedMotion } from '../../hooks/useMediaQuery'
 import { dayNight, tickDayNight } from './daynight/DayNightController'
 import { applyNightLighting } from './daynight/nightLighting'
-import { updateNightSky } from './daynight/NightSky'
 import { mapView } from './mapNavigation'
 
 const FOG_NEAR = 24
 const FOG_FAR = 68
 /** Extra fog distance per unit of zoom-out, roughly the camera-to-focus distance at zoom 1. */
 const FOG_ZOOM_RANGE = 17
-/** Night haze closes in a little so the lit village reads against a soft indigo distance. */
-const NIGHT_FOG_PULL = 6
+/**
+ * Night haze closes in so the lit village reads against a soft indigo distance; the far edge
+ * comes in furthest, opening a band of dissolved horizon where the night sky shows.
+ */
+const NIGHT_FOG_NEAR_PULL = 7
+const NIGHT_FOG_FAR_PULL = 24
 const SHADOW_EXTENT = 18
 const INITIAL = dayNight.state
 
 export function WorldEnvironment() {
-  const reduced = useReducedMotion()
   const sun = useRef<THREE.DirectionalLight>(null)
   const fill = useRef<THREE.DirectionalLight>(null)
   const hemi = useRef<THREE.HemisphereLight>(null)
@@ -25,17 +26,16 @@ export function WorldEnvironment() {
   const scene = useThree((s) => s.scene)
 
   useFrame((_, delta) => {
-    tickDayNight(Math.min(delta, 0.1), reduced)
+    tickDayNight(Math.min(delta, 0.1))
     const a = dayNight.state
     applyNightLighting(a)
-    updateNightSky(a)
 
     const zoomOut = Math.max(0, mapView.zoom - 1)
     if (scene.background instanceof THREE.Color) scene.background.copy(a.fog)
     if (scene.fog instanceof THREE.Fog) {
       scene.fog.color.copy(a.fog)
-      scene.fog.near = FOG_NEAR + zoomOut * FOG_ZOOM_RANGE - a.darkness * NIGHT_FOG_PULL
-      scene.fog.far = FOG_FAR + zoomOut * FOG_ZOOM_RANGE - a.darkness * NIGHT_FOG_PULL
+      scene.fog.near = FOG_NEAR + zoomOut * FOG_ZOOM_RANGE - a.darkness * NIGHT_FOG_NEAR_PULL
+      scene.fog.far = FOG_FAR + zoomOut * FOG_ZOOM_RANGE - a.darkness * NIGHT_FOG_FAR_PULL
     }
     if (hemi.current) {
       hemi.current.color.copy(a.hemiSky)

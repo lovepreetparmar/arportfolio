@@ -1,43 +1,61 @@
 import * as THREE from 'three'
 import { registerNightMaterial } from './daynight/nightLighting'
 
-/** Warm editorial palette for the world: cream base, muted greens, wood, stone, terracotta. */
+/**
+ * Stylised palette for the world: a meadow-green island with warm sand paths, rich foliage,
+ * honest wood and a curated set of painted facades. Saturation follows the hierarchy: project
+ * facades and accents carry the colour, the ground and distance stay calmer.
+ */
 export const WORLD_PALETTE = {
   background: '#efe8dc',
-  ground: '#ebe3d4',
-  groundSpeck: '#ddd2bf',
-  path: '#ddd0ba',
-  pathEdge: '#cbbca2',
-  plaza: '#e5d9c5',
-  plazaRing: '#cdbfa5',
-  grass: '#c6c8a5',
-  grassDeep: '#b4b893',
-  tuft: '#9ea680',
-  leaf: '#9aa47c',
-  leafDeep: '#85916a',
-  leafLight: '#b0b791',
-  cypress: '#6f7c5c',
-  trunk: '#8b6c52',
-  stone: '#c5bba9',
-  stoneDark: '#ada290',
-  wood: '#a87e5b',
-  woodDark: '#6e533f',
-  ivory: '#f2eadd',
-  plaster: '#ecdfcd',
-  whiteWall: '#f5f2eb',
-  terracotta: '#b8714f',
-  terracottaDeep: '#9c5a3f',
+  ground: '#a9c47f',
+  groundSpeck: '#98b670',
+  groundLight: '#b8d18c',
+  path: '#ead1a5',
+  pathEdge: '#bf9b70',
+  plaza: '#eedab6',
+  plazaRing: '#c7a67c',
+  grass: '#b6d086',
+  grassDeep: '#8fb266',
+  tuft: '#6f9a48',
+  leaf: '#6d9d47',
+  leafDeep: '#4b7c3a',
+  leafLight: '#8fbb55',
+  cypress: '#3f6d40',
+  trunk: '#86593a',
+  stone: '#cbc0ab',
+  stoneDark: '#a8998a',
+  wood: '#a96a42',
+  woodDark: '#5e3f2b',
+  ivory: '#f5ecdc',
+  plaster: '#f4e2c4',
+  whiteWall: '#f6f3ec',
+  terracotta: '#c4643e',
+  terracottaDeep: '#a44a31',
   charcoal: '#2f2d2a',
-  slate: '#4c4b48',
-  gold: '#c9a64a',
+  slate: '#4d5563',
+  lampMetal: '#2e3d36',
+  gold: '#d0a843',
   glassWarm: '#f3ddb4',
+  glassDay: '#d4e3ea',
   ink: '#1d1c1a',
-  sage: '#8f9a78',
-  ochre: '#c79a4e',
-  mutedRed: '#b44b3f',
-  flowerCream: '#f3ecdc',
-  flowerTerracotta: '#c77d5e',
+  sage: '#7f9a6c',
+  ochre: '#d69a3f',
+  mutedRed: '#bb4a3c',
+  flowerCream: '#f7f2e6',
+  flowerTerracotta: '#d9774f',
 } as const
+
+/** Flower heads, clustered by bed: white, then yellow, pink, lavender and orange accents. */
+export const FLOWER_COLORS = ['#f7f2e6', '#f1c64a', '#e992ab', '#ae96d8', '#ee9446'] as const
+
+/** Foliage families: each is [deep inner, mid crown, sunlit outer]. */
+export const LEAF_FAMILIES = [
+  ['#4b7c3a', '#6d9d47', '#8fbb55'],
+  ['#3f7340', '#5e9448', '#80b35a'],
+  ['#557a36', '#7ba446', '#9abd58'],
+] as const
+export const CYPRESS_TONES = ['#3f6d40', '#4a7a45', '#35603c'] as const
 
 type Hex = string
 
@@ -56,16 +74,24 @@ export function worldMat(color: Hex, roughness = 0.9, metalness = 0): THREE.Mesh
 
 const glowCache = new Map<string, THREE.MeshStandardMaterial>()
 
-/** Softly lit interior / lamp glass; `nightColor` sets the lamplight tone it warms to after dark. */
-export function glowMat(color: Hex = WORLD_PALETTE.glassWarm, intensity = 0.55, nightColor?: Hex): THREE.MeshStandardMaterial {
-  const key = `${color}|${intensity}|${nightColor ?? ''}`
+/**
+ * Softly lit interior / lamp glass; `nightColor` sets the lamplight tone it warms to after dark.
+ * Lower roughness lets window glass pick up a sun glint by day.
+ */
+export function glowMat(
+  color: Hex = WORLD_PALETTE.glassWarm,
+  intensity = 0.55,
+  nightColor?: Hex,
+  roughness = 0.6,
+): THREE.MeshStandardMaterial {
+  const key = `${color}|${intensity}|${nightColor ?? ''}|${roughness}`
   let m = glowCache.get(key)
   if (!m) {
     m = new THREE.MeshStandardMaterial({
       color,
       emissive: color,
       emissiveIntensity: intensity,
-      roughness: 0.6,
+      roughness,
     })
     registerNightMaterial(m, 'windows', intensity, { nightColor })
     glowCache.set(key, m)
@@ -91,7 +117,7 @@ export function createGroundTexture(): THREE.CanvasTexture {
     const y = rand() * size
     const r = 0.4 + rand() * 1.3
     ctx.globalAlpha = 0.18 + rand() * 0.3
-    ctx.fillStyle = rand() > 0.5 ? WORLD_PALETTE.groundSpeck : '#f3ede2'
+    ctx.fillStyle = rand() > 0.5 ? WORLD_PALETTE.groundSpeck : WORLD_PALETTE.groundLight
     ctx.beginPath()
     ctx.arc(x, y, r, 0, Math.PI * 2)
     ctx.fill()

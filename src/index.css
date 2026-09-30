@@ -59,16 +59,6 @@
   }
 }
 
-@keyframes dn-twinkle {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.45;
-  }
-}
-
 .lenis.lenis-smooth {
   scroll-behavior: auto !important;
 }

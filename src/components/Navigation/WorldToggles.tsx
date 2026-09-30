@@ -54,10 +54,10 @@ function SoundIcon({ on }: { on: boolean }) {
 
 /** Small ☀/☾ and sound switches that sit beside Contact. */
 export function WorldToggles() {
-  const { mode } = useDayNight()
+  const { control, target, dark } = useDayNight()
   const soundOn = useSoundEnabled()
   const reduced = useReducedMotion()
-  const night = mode === 'night'
+  const night = control === 'auto' ? dark : target === 'night'
 
   return (
     <div className="flex items-center gap-4">

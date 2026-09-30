@@ -11,7 +11,7 @@ import { Door, EntranceApron, Planter, ProjectPoster, SignBoard, signName, Windo
 const { width: W, depth: D } = ARCHETYPE_FOOTPRINT.boutique
 const H = 3
 const FZ = D / 2
-const STOREFRONT = '#2a2f2c'
+const STOREFRONT = '#2a5244'
 
 const slateMat = new THREE.MeshStandardMaterial({ color: WORLD_PALETTE.slate, roughness: 0.8, flatShading: true })
 
@@ -82,6 +82,7 @@ export function JewelleryBoutique({ project, config }: { project: Project; confi
             mullions="none"
             arch
             glow={0.5}
+            glass="#efdcb7"
             nightGlass="#ffa94d"
           />
           <mesh position={[x, 0.8, FZ + 0.16]} material={ivory} castShadow>

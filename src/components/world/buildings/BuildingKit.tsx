@@ -46,8 +46,8 @@ export function Door({
 }: DoorProps) {
   const { openRef } = useLocationContext()
   const hinge = useRef<THREE.Group>(null)
-  const leaf = worldMat(color, 0.7, 0.05)
-  const frame = worldMat(frameColor, 0.75)
+  const leaf = worldMat(color, 0.55, 0.05)
+  const frame = worldMat(frameColor, 0.7)
   const handle = worldMat(handleColor, 0.3, 0.7)
 
   useFrame(() => {
@@ -72,7 +72,7 @@ export function Door({
           <boxGeometry args={[width, height, 0.05]} />
         </mesh>
         {glazed ? (
-          <mesh position={[width / 2, height * 0.62, 0.028]} material={glowMat(WORLD_PALETTE.glassWarm, 0.3)}>
+          <mesh position={[width / 2, height * 0.62, 0.028]} material={glowMat(WORLD_PALETTE.glassDay, 0.3, undefined, 0.28)}>
             <planeGeometry args={[width * 0.62, height * 0.5]} />
           </mesh>
         ) : (
@@ -100,6 +100,8 @@ type WindowProps = {
   arch?: boolean
   sill?: string
   glow?: number
+  /** Daylight glass tone: pale sky reflection by default, warm for lit display windows. */
+  glass?: string
   /** Lamplight tone of the glass after dark. */
   nightGlass?: string
 }
@@ -113,9 +115,10 @@ export function Window({
   arch,
   sill,
   glow = 0.28,
+  glass: glassColor = WORLD_PALETTE.glassDay,
   nightGlass,
 }: WindowProps) {
-  const glass = glowMat('#efdcb7', glow, nightGlass)
+  const glass = glowMat(glassColor, glow, nightGlass, 0.28)
   const frame = worldMat(frameColor, 0.6, 0.1)
   const t = 0.05
   const bars: { p: Vec3; s: Vec3 }[] = []

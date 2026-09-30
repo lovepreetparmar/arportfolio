@@ -14,11 +14,14 @@ const REAL_LIGHTS_DESKTOP = 3
 const REAL_LIGHTS_MOBILE = 1
 const REAL_LIGHT_INTENSITY = 5.5
 const REAL_LIGHT_DISTANCE = 6
+/** Capped lamps throw light downward, so foliage level with the bulb is not blown out. */
+const REAL_LIGHT_ANGLE = 1.05
+const REAL_LIGHT_PENUMBRA = 0.75
 const RESELECT_SECONDS = 0.4
 
 /** Path lamp: pale glass by day; warm bulb and a soft pool of light on the path at night. */
 export function StreetLamp({ x, z }: { x: number; z: number }) {
-  const dark = worldMat(WORLD_PALETTE.charcoal, 0.55, 0.25)
+  const dark = worldMat(WORLD_PALETTE.lampMetal, 0.42, 0.45)
   return (
     <group position={[x, 0, z]}>
       <mesh position={[0, 0.06, 0]} material={dark} castShadow>
@@ -38,11 +41,11 @@ export function StreetLamp({ x, z }: { x: number; z: number }) {
   )
 }
 
-/** A handful of real point lights placed at the lamps closest to the camera focus. */
+/** A handful of real downward lights placed at the lamps closest to the camera focus. */
 export function StreetLampLights({ lamps }: { lamps: { x: number; z: number }[] }) {
   const touch = useIsTouchDevice()
   const count = touch ? REAL_LIGHTS_MOBILE : REAL_LIGHTS_DESKTOP
-  const lights = useRef<(THREE.PointLight | null)[]>([])
+  const lights = useRef<(THREE.SpotLight | null)[]>([])
   const reselect = useRef(0)
   /** Per light: lamp index it shows, lamp it should move to, and its fade (0–1). */
   const slots = useRef<{ current: number; next: number; fade: number }[]>([])
@@ -76,7 +79,11 @@ export function StreetLampLights({ lamps }: { lamps: { x: number; z: number }[] 
         slot.fade = Math.min(1, slot.fade + delta * 2)
       }
       const lamp = lamps[slot.current]
-      if (lamp) light.position.set(lamp.x, LAMP_HEIGHT - 0.1, lamp.z)
+      if (lamp) {
+        light.position.set(lamp.x, LAMP_HEIGHT - 0.1, lamp.z)
+        light.target.position.set(lamp.x, 0, lamp.z)
+        light.target.updateMatrixWorld()
+      }
       light.intensity = level * slot.fade * REAL_LIGHT_INTENSITY
     })
   })
@@ -84,7 +91,7 @@ export function StreetLampLights({ lamps }: { lamps: { x: number; z: number }[] 
   return (
     <>
       {Array.from({ length: count }, (_, i) => (
-        <pointLight
+        <spotLight
           key={i}
           ref={(el) => {
             lights.current[i] = el
@@ -92,6 +99,8 @@ export function StreetLampLights({ lamps }: { lamps: { x: number; z: number }[] 
           color="#ffc88a"
           intensity={0}
           distance={REAL_LIGHT_DISTANCE}
+          angle={REAL_LIGHT_ANGLE}
+          penumbra={REAL_LIGHT_PENUMBRA}
           decay={2}
         />
       ))}

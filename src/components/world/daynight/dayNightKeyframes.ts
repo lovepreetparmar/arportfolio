@@ -6,8 +6,13 @@ export type DayNightKeyframe = {
   phase: DayNightPhase
   /** Fog and background: the colour the distance dissolves into. */
   fog: string
-  /** Top of the screen at night reads as sky; this is its colour. */
+  /** Upper-sky colour the atmosphere shades toward from the haze at the horizon. */
   sky: string
+  /** Cloud cover strength (0 none → 1 full daytime clouds). */
+  clouds: number
+  /** Sunlit tops and shaded undersides of the clouds. */
+  cloudLit: string
+  cloudShade: string
   hemiSky: string
   hemiGround: string
   hemiIntensity: number
@@ -33,21 +38,24 @@ export type DayNightKeyframe = {
   nightAudio: number
 }
 
-/** The day keyframe reproduces the original art-directed daylight exactly. */
+/** Day pairs a warm sun with a cool sky fill, so colours read rich and shadows stay clean. */
 export const DAY_NIGHT_KEYFRAMES: DayNightKeyframe[] = [
   {
     at: 0,
     phase: 'day',
     fog: '#efe8dc',
-    sky: '#efe8dc',
-    hemiSky: '#fff8ec',
-    hemiGround: '#d9ccb4',
-    hemiIntensity: 0.93,
-    sunColor: '#fff0dc',
+    sky: '#9fbedb',
+    clouds: 0.9,
+    cloudLit: '#ffffff',
+    cloudShade: '#dbe3ec',
+    hemiSky: '#eef3f5',
+    hemiGround: '#c8cca6',
+    hemiIntensity: 0.9,
+    sunColor: '#fff0d4',
     sunIntensity: 1.55,
     sunOffset: [9, 15, 7],
-    fillColor: '#e9eef2',
-    fillIntensity: 0.22,
+    fillColor: '#d6e4f3',
+    fillIntensity: 0.24,
     windows: 1,
     lamps: 0,
     signs: 0,
@@ -61,9 +69,12 @@ export const DAY_NIGHT_KEYFRAMES: DayNightKeyframe[] = [
     at: 0.2,
     phase: 'afternoon',
     fog: '#f0e4cf',
-    sky: '#efe2cc',
-    hemiSky: '#fff2dc',
-    hemiGround: '#d7c6a8',
+    sky: '#a9c0d6',
+    clouds: 0.9,
+    cloudLit: '#fffaf1',
+    cloudShade: '#dfdfe3',
+    hemiSky: '#f4f0e6',
+    hemiGround: '#c9c49e',
     hemiIntensity: 0.88,
     sunColor: '#ffe2b6',
     sunIntensity: 1.6,
@@ -83,11 +94,14 @@ export const DAY_NIGHT_KEYFRAMES: DayNightKeyframe[] = [
     at: 0.38,
     phase: 'sunset',
     fog: '#ecd2b8',
-    sky: '#e7c3a6',
+    sky: '#b3b1c6',
+    clouds: 0.8,
+    cloudLit: '#fbdcc4',
+    cloudShade: '#c4afb6',
     hemiSky: '#ffdcbf',
     hemiGround: '#bba08c',
     hemiIntensity: 0.8,
-    sunColor: '#ffb888',
+    sunColor: '#ffb47c',
     sunIntensity: 1.42,
     sunOffset: [16, 5, -2],
     fillColor: '#cdb4cc',
@@ -105,9 +119,12 @@ export const DAY_NIGHT_KEYFRAMES: DayNightKeyframe[] = [
     at: 0.5,
     phase: 'dusk',
     fog: '#948aa6',
-    sky: '#6f6a8e',
+    sky: '#5f6690',
+    clouds: 0.35,
+    cloudLit: '#b49db0',
+    cloudShade: '#7c7894',
     hemiSky: '#aca0c4',
-    hemiGround: '#72667d',
+    hemiGround: '#626a70',
     hemiIntensity: 0.7,
     sunColor: '#e59a86',
     sunIntensity: 0.42,
@@ -128,9 +145,12 @@ export const DAY_NIGHT_KEYFRAMES: DayNightKeyframe[] = [
     phase: 'night',
     fog: '#323a50',
     sky: '#141a2e',
+    clouds: 0.04,
+    cloudLit: '#454d6a',
+    cloudShade: '#2b3248',
     hemiSky: '#7888b6',
-    hemiGround: '#2e3344',
-    hemiIntensity: 0.74,
+    hemiGround: '#2c3a3a',
+    hemiIntensity: 0.8,
     sunColor: '#b6c4ec',
     sunIntensity: 0.6,
     sunOffset: [-9, 14, 5],
@@ -150,9 +170,12 @@ export const DAY_NIGHT_KEYFRAMES: DayNightKeyframe[] = [
     phase: 'night',
     fog: '#323a50',
     sky: '#141a2e',
+    clouds: 0.04,
+    cloudLit: '#454d6a',
+    cloudShade: '#2b3248',
     hemiSky: '#7888b6',
-    hemiGround: '#2e3344',
-    hemiIntensity: 0.74,
+    hemiGround: '#2c3a3a',
+    hemiIntensity: 0.8,
     sunColor: '#b6c4ec',
     sunIntensity: 0.6,
     sunOffset: [-9, 14, 5],
@@ -171,9 +194,12 @@ export const DAY_NIGHT_KEYFRAMES: DayNightKeyframe[] = [
     at: 0.94,
     phase: 'dawn',
     fog: '#d9c9c4',
-    sky: '#b9a9b4',
+    sky: '#aab0c8',
+    clouds: 0.45,
+    cloudLit: '#f7dccf',
+    cloudShade: '#b3adbd',
     hemiSky: '#f3dcd2',
-    hemiGround: '#a89b9c',
+    hemiGround: '#9ea394',
     hemiIntensity: 0.8,
     sunColor: '#ffcaa8',
     sunIntensity: 0.95,

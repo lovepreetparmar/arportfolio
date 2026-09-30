@@ -12,6 +12,7 @@ const H = 3.2
 const FZ = D / 2
 const TEETH = 3
 const TOOTH_RISE = 0.75
+const ROOF_BLUE = '#56708c'
 
 /** Sculpture of stacked primitives beside the entrance. */
 function PrimitiveSculpture({ position }: { position: [number, number, number] }) {
@@ -65,11 +66,11 @@ export function DesignStudio({ project, config }: { project: Project; config: Pr
       </mesh>
       {Array.from({ length: TEETH }, (_, i) => (
         <group key={i} position={[i * tw, H + 0.08, 0]}>
-          <mesh geometry={tooth} material={worldMat(WORLD_PALETTE.slate, 0.8)} castShadow receiveShadow />
+          <mesh geometry={tooth} material={worldMat(ROOF_BLUE, 0.7)} castShadow receiveShadow />
           <mesh
             position={[-W / 2 + tw + 0.006, TOOTH_RISE / 2, 0]}
             rotation={[0, Math.PI / 2, 0]}
-            material={glowMat('#e8dcc4', 0.35)}
+            material={glowMat(WORLD_PALETTE.glassDay, 0.35, undefined, 0.3)}
           >
             <planeGeometry args={[D - 0.2, TOOTH_RISE - 0.12]} />
           </mesh>

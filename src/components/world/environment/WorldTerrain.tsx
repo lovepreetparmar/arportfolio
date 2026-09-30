@@ -25,7 +25,7 @@ function blobGeometry(p: PatchSpot): THREE.BufferGeometry {
 
 const hillGeometry = new THREE.SphereGeometry(1, 28, 14, 0, Math.PI * 2, 0, Math.PI / 2)
 const hillMaterial = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 1 })
-const HILL_TINTS = ['#d9d5bd', '#cdd0b1', '#e2d9c6']
+const HILL_TINTS = ['#a3bf86', '#94b27c', '#b3c996']
 
 export function WorldTerrain() {
   const groundTexture = useMemo(() => createGroundTexture(), [])

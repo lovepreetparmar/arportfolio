@@ -35,6 +35,7 @@ function WorldScene({ onSelectProject }: WorldProps) {
   return (
     <>
       <WorldEnvironment />
+      <NightSky />
       <WorldGround />
       <WorldTerrain />
       <WorldPaths />
@@ -87,7 +88,6 @@ export function World({ onSelectProject, dimmed }: WorldProps) {
           </SittingProvider>
         </Suspense>
       </Canvas>
-      <NightSky />
     </div>
   )
 }

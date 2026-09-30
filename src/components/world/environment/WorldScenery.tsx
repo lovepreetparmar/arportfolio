@@ -4,19 +4,23 @@ import { getProjectBySlug } from '../../../data/projects'
 import { getProjectEntrance } from '../../../data/projectWorld'
 import { getWorldScenery, type TreeSpot } from '../../../data/worldScenery'
 import { StreetLamp, StreetLampLights } from '../daynight/StreetLamps'
-import { createSignTexture, WORLD_PALETTE, worldMat } from '../worldMaterials'
+import { createSignTexture, CYPRESS_TONES, FLOWER_COLORS, LEAF_FAMILIES, WORLD_PALETTE, worldMat } from '../worldMaterials'
 import { InstancedParts, type InstanceItem } from './InstancedParts'
 
 const sphereGeo = new THREE.SphereGeometry(1, 18, 14)
 const trunkGeo = new THREE.CylinderGeometry(0.06, 0.09, 1, 8)
 const stoneGeo = new THREE.DodecahedronGeometry(0.18, 0)
 const tuftGeo = new THREE.ConeGeometry(0.022, 0.3, 4)
-const flowerGeo = new THREE.SphereGeometry(0.045, 8, 6)
+const flowerGeo = new THREE.SphereGeometry(0.055, 8, 6)
 const whiteMat = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.92 })
+const barkMat = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.95 })
+const leafMat = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.78 })
+const petalMat = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.7 })
 const stoneMat = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.95, flatShading: true })
 
-const LEAF = [WORLD_PALETTE.leaf, WORLD_PALETTE.leafDeep, WORLD_PALETTE.leafLight]
-const CYPRESS = [WORLD_PALETTE.cypress, '#7a8765', '#66735a']
+const DEEP = 0
+const MID = 1
+const LIGHT = 2
 
 function treeParts(trees: TreeSpot[]) {
   const trunks: InstanceItem[] = []
@@ -30,17 +34,19 @@ function treeParts(trees: TreeSpot[]) {
       y,
       t.z - ox * n + oz * c,
     ]
+    const leaf = LEAF_FAMILIES[t.tint]
     if (t.kind === 'round') {
+      // Mid-green crown, a deeper puff low in the canopy and a sunlit one catching the light.
       trunks.push({ position: [t.x, 0.65 * s, t.z], scale: [s, 1.3 * s, s], color: WORLD_PALETTE.trunk })
-      canopy.push({ position: at(0, 1.95 * s, 0), scale: [0.95 * s, 0.86 * s, 0.95 * s], color: LEAF[t.tint] })
-      canopy.push({ position: at(0.5 * s, 1.6 * s, 0.2 * s), scale: 0.58 * s, color: LEAF[(t.tint + 1) % 3] })
-      canopy.push({ position: at(-0.42 * s, 1.72 * s, -0.28 * s), scale: 0.52 * s, color: LEAF[t.tint] })
+      canopy.push({ position: at(0, 1.95 * s, 0), scale: [0.95 * s, 0.86 * s, 0.95 * s], color: leaf[MID] })
+      canopy.push({ position: at(0.5 * s, 1.6 * s, 0.2 * s), scale: 0.58 * s, color: leaf[LIGHT] })
+      canopy.push({ position: at(-0.42 * s, 1.72 * s, -0.28 * s), scale: 0.52 * s, color: leaf[DEEP] })
     } else if (t.kind === 'cypress') {
       trunks.push({ position: [t.x, 0.25 * s, t.z], scale: [0.9 * s, 0.5 * s, 0.9 * s], color: WORLD_PALETTE.trunk })
-      canopy.push({ position: [t.x, 1.55 * s, t.z], scale: [0.5 * s, 1.35 * s, 0.5 * s], color: CYPRESS[t.tint] })
+      canopy.push({ position: [t.x, 1.55 * s, t.z], scale: [0.5 * s, 1.35 * s, 0.5 * s], color: CYPRESS_TONES[t.tint] })
     } else {
-      canopy.push({ position: at(0, 0.3 * s, 0), scale: [0.5 * s, 0.4 * s, 0.5 * s], color: LEAF[t.tint] })
-      canopy.push({ position: at(0.38 * s, 0.22 * s, 0.1 * s), scale: 0.3 * s, color: LEAF[(t.tint + 2) % 3] })
+      canopy.push({ position: at(0, 0.3 * s, 0), scale: [0.5 * s, 0.4 * s, 0.5 * s], color: leaf[DEEP] })
+      canopy.push({ position: at(0.38 * s, 0.22 * s, 0.1 * s), scale: 0.3 * s, color: leaf[LIGHT] })
     }
   }
   return { trunks, canopy }
@@ -67,8 +73,8 @@ function Signpost() {
       }),
     [],
   )
-  const wood = worldMat(WORLD_PALETTE.woodDark, 0.8)
-  const face = worldMat(WORLD_PALETTE.ivory, 0.9)
+  const wood = worldMat(WORLD_PALETTE.woodDark, 0.75)
+  const face = worldMat(WORLD_PALETTE.ivory, 0.85)
   return (
     <group position={[SIGNPOST_POS.x, 0, SIGNPOST_POS.z]}>
       <mesh position={[0, 0.95, 0]} material={wood} castShadow>
@@ -117,7 +123,7 @@ export function WorldScenery() {
           position: [t.x + lean * 0.1, 0.13 * t.scale, t.z + ((k % 2) - 0.5) * 0.06] as [number, number, number],
           rotation: [0, 0, lean] as [number, number, number],
           scale: t.scale,
-          color: t.tint ? WORLD_PALETTE.tuft : WORLD_PALETTE.leafDeep,
+          color: t.tint ? WORLD_PALETTE.tuft : WORLD_PALETTE.leaf,
         })),
       ),
     [tufts],
@@ -127,18 +133,18 @@ export function WorldScenery() {
       flowers.map((f) => ({
         position: [f.x, 0.1 * f.scale, f.z],
         scale: f.scale,
-        color: f.tint ? WORLD_PALETTE.flowerTerracotta : WORLD_PALETTE.flowerCream,
+        color: FLOWER_COLORS[f.tint],
       })),
     [flowers],
   )
 
   return (
     <group>
-      <InstancedParts geometry={trunkGeo} material={whiteMat} items={trunks} castShadow />
-      <InstancedParts geometry={sphereGeo} material={whiteMat} items={canopy} castShadow receiveShadow />
+      <InstancedParts geometry={trunkGeo} material={barkMat} items={trunks} castShadow />
+      <InstancedParts geometry={sphereGeo} material={leafMat} items={canopy} castShadow receiveShadow />
       <InstancedParts geometry={stoneGeo} material={stoneMat} items={stoneItems} castShadow receiveShadow />
       <InstancedParts geometry={tuftGeo} material={whiteMat} items={tuftItems} />
-      <InstancedParts geometry={flowerGeo} material={whiteMat} items={flowerItems} />
+      <InstancedParts geometry={flowerGeo} material={petalMat} items={flowerItems} />
       {lamps.map((l, i) => (
         <StreetLamp key={i} x={l.x} z={l.z} />
       ))}

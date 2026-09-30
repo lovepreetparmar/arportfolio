@@ -5,7 +5,7 @@ import type { CharacterRigRefs } from './useCharacterRefs'
  * Relaxed seated pose in rig space (the rig is scaled 0.86, so the 0.4 m bench seat is ~0.465 here).
  * Thighs slope gently to the knees, shins drop with feet flat, forearms rest on the lap.
  */
-const SEATED = {
+export const SEATED = {
   hipsY: 0.5,
   spineLean: -0.07,
   thigh: -1.3,
@@ -24,6 +24,11 @@ function smootherstep(x: number) {
   return t * t * t * (t * (t * 6 - 15) + 10)
 }
 
+/** How far the arms have moved into the seated pose; they follow the body a little late. */
+export function seatedArmWeight(amount: number) {
+  return smoothstep(amount, 0.15, 1)
+}
+
 /**
  * Blends the standing/idle pose the controller already applied toward the seated pose.
  * `amount` is the raw sit progress (0 standing → 1 seated); `seatedIdle` fades in the settled micro-motion.
@@ -38,7 +43,7 @@ export function applySittingPose(refs: CharacterRigRefs, amount: number, t: numb
   }
 
   const body = smootherstep(amount)
-  const arms = smoothstep(amount, 0.15, 1)
+  const arms = seatedArmWeight(amount)
   // People fold forward over their knees on the way down and back up.
   const fold = Math.sin(Math.PI * body) * 0.32
 

@@ -15,8 +15,8 @@ type BenchProps = {
 /** Slatted park bench; its front (local +z) is the side you sit facing. */
 export function Bench({ bench, onSelect }: BenchProps) {
   const { setMode } = useCursor()
-  const wood = worldMat(WORLD_PALETTE.wood, 0.85)
-  const dark = worldMat(WORLD_PALETTE.charcoal, 0.6, 0.2)
+  const wood = worldMat(WORLD_PALETTE.wood, 0.8)
+  const dark = worldMat(WORLD_PALETTE.lampMetal, 0.45, 0.45)
 
   const onClick = (e: ThreeEvent<MouseEvent>) => {
     e.stopPropagation()

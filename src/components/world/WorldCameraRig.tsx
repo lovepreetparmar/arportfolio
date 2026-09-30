@@ -2,70 +2,84 @@ import { useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { useWorldState } from '../../context/WorldStateContext'
-import { useReducedMotion, useIsTouchDevice } from '../../hooks/useMediaQuery'
+import { useReducedMotion } from '../../hooks/useMediaQuery'
 import { getProjectBySlug } from '../../data/projects'
 import { getProjectEntrance } from '../../data/projectWorld'
-import { ARCHETYPE_FOOTPRINT, worldProjectSlots } from '../../data/worldLayout'
 import { damp } from '../character/CharacterAnimations'
+import { characterSignals } from '../character/characterSignals'
+import { collisionDistance, minCameraHeight } from './cameraCollision'
 import {
+  BASE_DISTANCE,
+  DEFAULT_POLAR,
+  MAX_POLAR_ANGLE,
+  ORBIT_DAMPING,
   PAN_DAMPING,
   PAN_RECENTER_DAMPING,
-  ROOF_CLEARANCE_HEIGHT,
-  ROOF_CLEARANCE_MARGIN,
+  PIVOT_HEIGHT,
   ZOOM_DAMPING,
   mapView,
+  type CameraMode,
 } from './mapNavigation'
 
-/** Elevated three-quarter view: high enough to read paths and neighbouring buildings. */
-const CAM_HEIGHT = 7.4
-const CAM_DISTANCE = 11
-const LOOK_AHEAD = 3
-const LOOK_Y = 0.9
-const MIN_CAMERA_Y = 1.4
+/** Upward tilt after aiming at the pivot, so she sits just below frame centre with the streets ahead. */
+const FRAME_TILT = 0.082
+/** Slight pull-back while walking to a project so the destination stays in frame. */
+const WALK_PULLBACK = 1.06
+/** How far along the walk the pivot leans toward the destination building. */
+const WALK_LEAN = 0.38
+/** Door shot: the door frame, seen from slightly off-axis in front of the entrance. */
+const DOOR_LOOK_Y = 1.25
+/** Ground point framed for the sun, shadows and nearest-lamp choice, ahead of the pivot. */
+const FOCUS_AHEAD = 3
+/** Lower views come closer (fraction of the orbit distance at the lowest angle), keeping her readable. */
+const LOW_ANGLE_DISTANCE = 0.62
 
-const ROOF_ZONES = worldProjectSlots.map((s) => {
-  const fp = ARCHETYPE_FOOTPRINT[s.archetype]
-  return {
-    x: s.position.x,
-    z: s.position.z,
-    cos: Math.cos(s.rotation),
-    sin: Math.sin(s.rotation),
-    hw: fp.width / 2 + ROOF_CLEARANCE_MARGIN,
-    hd: fp.depth / 2 + ROOF_CLEARANCE_MARGIN,
-  }
-})
+const desiredPivot = new THREE.Vector3()
+const desiredCamera = new THREE.Vector3()
 
-/** Lowest camera height allowed at (x, z) so it never dips into a building. */
-function minCameraHeight(x: number, z: number) {
-  for (const r of ROOF_ZONES) {
-    const dx = x - r.x
-    const dz = z - r.z
-    const lx = dx * r.cos - dz * r.sin
-    const lz = dx * r.sin + dz * r.cos
-    if (Math.abs(lx) < r.hw && Math.abs(lz) < r.hd) return ROOF_CLEARANCE_HEIGHT
-  }
-  return MIN_CAMERA_Y
+/** Equivalent of `target` within ±π of `current`, so the camera swings the short way round. */
+function nearestAngle(current: number, target: number) {
+  return current + Math.atan2(Math.sin(target - current), Math.cos(target - current))
 }
 
+function orbitPosition(pivot: THREE.Vector3, azimuth: number, polar: number, distance: number, out: THREE.Vector3) {
+  const s = Math.sin(polar)
+  return out.set(
+    pivot.x + Math.sin(azimuth) * s * distance,
+    pivot.y + Math.cos(polar) * distance,
+    pivot.z + Math.cos(azimuth) * s * distance,
+  )
+}
+
+/**
+ * The world camera: a third-person orbit around Anushri's upper torso. The visitor owns the
+ * viewing angle (drag to orbit, wheel / pinch to zoom); the camera follows her position but never
+ * swings behind her on its own. Dragging up past the lowest orbit tilts the view into the sky.
+ * Selecting a project levels the view and eases it onto the door and back again.
+ */
 export function WorldCameraRig() {
   const { camera } = useThree()
-  const { character, pointer, journeyPhase, pendingProjectSlug, moving } = useWorldState()
+  const { character, journeyPhase, pendingProjectSlug, moving } = useWorldState()
   const reduced = useReducedMotion()
-  const isTouch = useIsTouchDevice()
-  const desiredPos = useRef(new THREE.Vector3())
-  const desiredLook = useRef(new THREE.Vector3())
-  const look = useRef<THREE.Vector3 | null>(null)
+  const pivot = useRef<THREE.Vector3 | null>(null)
+  const distance = useRef(BASE_DISTANCE)
+  const reach = useRef(BASE_DISTANCE)
+  const tilt = useRef(FRAME_TILT)
 
-  useFrame((_, delta) => {
+  useFrame((_, rawDelta) => {
+    const delta = Math.min(rawDelta, 0.1)
+    const view = mapView
+    const phase = journeyPhase
     const project = pendingProjectSlug ? getProjectBySlug(pendingProjectSlug) : undefined
     const entrance = project ? getProjectEntrance(project) : null
-    const phase = journeyPhase
     const doorShot = !!entrance && (phase === 'arrived' || phase === 'doorOpening' || phase === 'entering')
-    const view = mapView
+    const mode: CameraMode =
+      phase === 'inRoom' || phase === 'exiting' ? 'PROJECT_ROOM' : doorShot ? 'PROJECT_TRANSITION' : 'WORLD'
+    view.mode = mode
 
     view.zoom = damp(view.zoom, view.targetZoom, reduced ? 20 : ZOOM_DAMPING, delta)
-    if (doorShot || phase !== 'world' || (moving && !view.dragging)) {
-      const recenter = doorShot ? 4 : PAN_RECENTER_DAMPING
+    if (mode !== 'WORLD' || (moving && !view.dragging)) {
+      const recenter = mode === 'WORLD' ? PAN_RECENTER_DAMPING : 4
       view.targetPanX = damp(view.targetPanX, 0, recenter, delta)
       view.targetPanZ = damp(view.targetPanZ, 0, recenter, delta)
     }
@@ -73,53 +87,65 @@ export function WorldCameraRig() {
     view.panX = damp(view.panX, view.targetPanX, panLambda, delta)
     view.panZ = damp(view.panZ, view.targetPanZ, panLambda, delta)
 
-    const zoom = view.zoom
-    if (entrance && doorShot) {
+    if (entrance) view.targetPolar = Math.min(view.targetPolar, MAX_POLAR_ANGLE)
+    let azimuth = view.targetAzimuth
+    let polar = view.targetPolar
+    const lowView = THREE.MathUtils.smoothstep(view.polar, DEFAULT_POLAR, MAX_POLAR_ANGLE)
+    let dist = BASE_DISTANCE * view.zoom * THREE.MathUtils.lerp(1, LOW_ANGLE_DISTANCE, lowView)
+    let frameTilt = FRAME_TILT * (1 - 0.5 * lowView)
+
+    if (mode === 'PROJECT_TRANSITION' && entrance) {
       const fx = Math.sin(entrance.doorYaw)
       const fz = Math.cos(entrance.doorYaw)
-      const doorX = entrance.x - fx * 1.1
-      const doorZ = entrance.z - fz * 1.1
-      const back = phase === 'entering' ? 2.6 : 6.4
-      const up = phase === 'entering' ? 2 : 3.3
-      desiredPos.current.set(doorX + fx * back + fz * 0.5, up, doorZ + fz * back - fx * 0.5)
-      desiredLook.current.set(doorX, 1.25, doorZ)
+      const entering = phase === 'entering'
+      const back = entering ? 2.6 : 6.4
+      const up = (entering ? 2 : 3.3) - DOOR_LOOK_Y
+      const ox = fx * back + fz * 0.5
+      const oz = fz * back - fx * 0.5
+      const horizontal = Math.hypot(ox, oz)
+      desiredPivot.set(entrance.x - fx * 1.1, DOOR_LOOK_Y, entrance.z - fz * 1.1)
+      azimuth = nearestAngle(view.azimuth, Math.atan2(ox, oz))
+      polar = Math.atan2(horizontal, up)
+      dist = Math.hypot(horizontal, up)
+      frameTilt = 0
     } else {
-      let fx = character.x
-      let fz = character.z
-      let height = CAM_HEIGHT
-      let distance = CAM_DISTANCE
-      let ahead = LOOK_AHEAD
+      const present = characterSignals.present
+      desiredPivot.set(present ? characterSignals.x : character.x, PIVOT_HEIGHT, present ? characterSignals.z : character.z)
       if (entrance && phase === 'walking') {
-        fx = THREE.MathUtils.lerp(character.x, entrance.buildingX, 0.38)
-        fz = THREE.MathUtils.lerp(character.z, entrance.buildingZ, 0.38)
-        height += 0.6
-        distance += 0.8
-        ahead *= 0.5
+        desiredPivot.x = THREE.MathUtils.lerp(desiredPivot.x, entrance.buildingX, WALK_LEAN)
+        desiredPivot.z = THREE.MathUtils.lerp(desiredPivot.z, entrance.buildingZ, WALK_LEAN)
+        dist *= WALK_PULLBACK
       }
-      fx += view.panX
-      fz += view.panZ
-      desiredPos.current.set(fx, height * zoom, fz + distance * zoom)
-      desiredLook.current.set(fx, LOOK_Y, fz - ahead * Math.min(1, zoom))
-
-      if (!reduced && !isTouch && phase === 'world' && !view.dragging) {
-        desiredPos.current.x += pointer.x * 0.35
-        desiredPos.current.y += pointer.y * 0.18
-      }
-      desiredPos.current.y = Math.max(desiredPos.current.y, minCameraHeight(desiredPos.current.x, desiredPos.current.z))
+      desiredPivot.x += view.panX
+      desiredPivot.z += view.panZ
     }
 
-    const lambda = reduced ? 20 : phase === 'walking' ? 2.2 : phase === 'world' ? (view.dragging ? 10 : 4) : 3
-    camera.position.x = damp(camera.position.x, desiredPos.current.x, lambda, delta)
-    camera.position.y = damp(camera.position.y, desiredPos.current.y, lambda, delta)
-    camera.position.z = damp(camera.position.z, desiredPos.current.z, lambda, delta)
+    const transition = mode === 'PROJECT_TRANSITION'
+    const orbitLambda = reduced ? 30 : transition ? 2.6 : view.dragging ? 14 : ORBIT_DAMPING
+    const followLambda = reduced ? 30 : transition ? 2.8 : phase === 'walking' ? 4.5 : 6
+    view.azimuth = damp(view.azimuth, azimuth, orbitLambda, delta)
+    view.polar = damp(view.polar, polar, orbitLambda, delta)
+    distance.current = damp(distance.current, dist, reduced ? 30 : transition ? 2.8 : 9, delta)
+    tilt.current = damp(tilt.current, frameTilt, 3, delta)
 
-    if (!look.current) look.current = desiredLook.current.clone()
-    look.current.x = damp(look.current.x, desiredLook.current.x, lambda * 1.3, delta)
-    look.current.y = damp(look.current.y, desiredLook.current.y, lambda * 1.3, delta)
-    look.current.z = damp(look.current.z, desiredLook.current.z, lambda * 1.3, delta)
-    camera.lookAt(look.current)
-    view.focusX = look.current.x
-    view.focusZ = look.current.z
+    if (!pivot.current) pivot.current = desiredPivot.clone()
+    const p = pivot.current
+    p.x = damp(p.x, desiredPivot.x, followLambda, delta)
+    p.y = damp(p.y, desiredPivot.y, followLambda, delta)
+    p.z = damp(p.z, desiredPivot.z, followLambda, delta)
+
+    const orbitPolar = Math.min(view.polar, MAX_POLAR_ANGLE)
+    const lookUp = Math.max(0, view.polar - MAX_POLAR_ANGLE)
+    orbitPosition(p, view.azimuth, orbitPolar, distance.current, desiredCamera)
+    const clear = mode === 'WORLD' ? collisionDistance(p, desiredCamera) : distance.current
+    reach.current = clear < reach.current ? damp(reach.current, clear, 25, delta) : damp(reach.current, clear, 3, delta)
+    orbitPosition(p, view.azimuth, orbitPolar, Math.min(distance.current, reach.current), camera.position)
+    camera.position.y = Math.max(camera.position.y, minCameraHeight(camera.position.x, camera.position.z))
+    camera.lookAt(p)
+    camera.rotateX(tilt.current + lookUp)
+
+    view.focusX = p.x - Math.sin(view.azimuth) * FOCUS_AHEAD
+    view.focusZ = p.z - Math.cos(view.azimuth) * FOCUS_AHEAD
 
     if (camera instanceof THREE.PerspectiveCamera) {
       const targetFov = phase === 'entering' ? 34 : phase === 'doorOpening' ? 36 : 38

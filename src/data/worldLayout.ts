@@ -4,11 +4,24 @@ export type BuildingArchetype = 'boutique' | 'kitchen' | 'studio' | 'pavilion'
 
 export type PavilionStyle = 'plaster' | 'wood' | 'stone'
 
+/** Colourway of a pavilion; the style sets its construction, the tone its paint. */
+export type PavilionTone =
+  | 'cream'
+  | 'sage'
+  | 'coral'
+  | 'yellow'
+  | 'honey'
+  | 'walnut'
+  | 'blue'
+  | 'lavender'
+  | 'sand'
+
 export type WorldProjectSlot = {
   slug: string
   position: { x: number; y: number; z: number }
   archetype: BuildingArchetype
   style?: PavilionStyle
+  tone?: PavilionTone
   /** Yaw in radians; the building's front (local +z) faces this direction. */
   rotation: number
 }
@@ -41,12 +54,14 @@ function slot(
   z: number,
   archetype: BuildingArchetype,
   style?: PavilionStyle,
+  tone?: PavilionTone,
 ): WorldProjectSlot {
   return {
     slug,
     position: { x, y: 0, z },
     archetype,
     style,
+    tone,
     rotation: Math.atan2(WORLD_HUB.x - x, WORLD_HUB.z - z),
   }
 }
@@ -55,15 +70,15 @@ export const worldProjectSlots: WorldProjectSlot[] = [
   slot('food-creatives', -6, -7, 'kitchen'),
   slot('roshan-shah', 6.5, -7.5, 'boutique'),
   slot('brand-identity', 0, -14, 'studio'),
-  slot('adventure-website', -11, -19, 'pavilion', 'wood'),
-  slot('billboards', 12, -19, 'pavilion', 'plaster'),
-  slot('brand-with-a-heart', -14, -4, 'pavilion', 'plaster'),
-  slot('company-portfolio', 15, -3, 'pavilion', 'stone'),
-  slot('timbs', -15, 7, 'pavilion', 'wood'),
-  slot('social-media', 15, 8, 'pavilion', 'plaster'),
-  slot('invitation', -8, 15, 'pavilion', 'stone'),
-  slot('real-estate', 9, 16, 'pavilion', 'stone'),
-  slot('book-cover', 0, 20, 'pavilion', 'plaster'),
+  slot('adventure-website', -11, -19, 'pavilion', 'wood', 'honey'),
+  slot('billboards', 12, -19, 'pavilion', 'plaster', 'yellow'),
+  slot('brand-with-a-heart', -14, -4, 'pavilion', 'plaster', 'coral'),
+  slot('company-portfolio', 15, -3, 'pavilion', 'stone', 'blue'),
+  slot('timbs', -15, 7, 'pavilion', 'wood', 'walnut'),
+  slot('social-media', 15, 8, 'pavilion', 'plaster', 'sage'),
+  slot('invitation', -8, 15, 'pavilion', 'stone', 'lavender'),
+  slot('real-estate', 9, 16, 'pavilion', 'stone', 'sand'),
+  slot('book-cover', 0, 20, 'pavilion', 'plaster', 'cream'),
 ]
 
 const slotBySlug = new Map(worldProjectSlots.map((s) => [s.slug, s]))

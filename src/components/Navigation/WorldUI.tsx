@@ -43,7 +43,7 @@ export function WorldUI({ onFlyToContact, onOpenProjectDirect }: WorldUIProps) {
           <p
             className={`text-[10px] tracking-[0.3em] uppercase transition-colors duration-1000 ${dark ? 'text-[#b9b4c4]' : 'text-muted'}`}
           >
-            {traveling ? 'Walking to project…' : 'Select a location · Click to walk · WASD to move'}
+            {traveling ? 'Walking to project…' : 'Select a location · Click to walk · Drag to look · WASD to move'}
           </p>
           <div className="pointer-events-auto flex items-center gap-5">
             <WorldToggles />

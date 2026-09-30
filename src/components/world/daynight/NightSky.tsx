@@ -1,107 +1,155 @@
+import { useFrame, useThree } from '@react-three/fiber'
 import { useEffect, useMemo, useRef } from 'react'
-import { useIsTouchDevice } from '../../../hooks/useMediaQuery'
-import type { DayNightState } from './DayNightController'
+import * as THREE from 'three'
+import { useIsTouchDevice, useReducedMotion } from '../../../hooks/useMediaQuery'
+import { dayNight } from './DayNightController'
+import { updateSkyAtmosphere } from './skyAtmosphere'
+import { SKY_RADIUS, direction } from './skyCoordinates'
+import { createSkyDome } from './skyDome'
+import { TWINKLE_AMOUNT, createStarField } from './starField'
+import './skyHorizon'
 
 /**
- * The camera looks down on the village and never sees the sky, so the evening sky lives in a
- * soft band across the top of the screen: a navy wash, a small moon and a few quiet stars.
+ * The sky: atmosphere, clouds, sun glow and Milky Way on a dome, stars, and the moon, all on a shell that
+ * travels with the camera. Orbiting turns the view across a fixed sky; zooming or walking never
+ * brings any of it closer or makes it bigger. Everything is depth-tested and drawn after the
+ * world, so every building, tree and hill in front of the sky hides it. It shows in open sky and
+ * where the world has dissolved into the distance haze (see skyHorizon).
  */
-const STAR_COUNT = 22
-const STAR_COUNT_MOBILE = 12
+const DOME_RADIUS = SKY_RADIUS + 6
+/** The Milky Way lags the first stars: absent at sunset, faint at dusk, full only at night. */
+const GALAXY_CURVE = 1.8
+/** Moon direction (degrees right of north, and above the horizon) and angular size. */
+const MOON_AZIMUTH = 20
+const MOON_ELEVATION = 16
+const MOON_DIAMETER_DEG = 0.95
+const MOON_OPACITY = 0.9
 
-type SkyElements = { band: HTMLDivElement; moon: HTMLDivElement; stars: HTMLDivElement }
-let elements: SkyElements | null = null
-let last = { band: -1, moon: -1, stars: -1, sky: '' }
-
-const q = (v: number) => Math.round(v * 100) / 100
-
-/** Called from the environment frame loop; writes only when a value visibly changes. */
-export function updateNightSky(state: DayNightState) {
-  if (!elements) return
-  const band = q(state.darkness * 0.9)
-  const moon = q(state.moon)
-  const stars = q(state.stars)
-  const sky = `#${state.sky.getHexString()}`
-  if (band !== last.band) elements.band.style.opacity = String(band)
-  if (sky !== last.sky) elements.band.style.setProperty('--dn-sky', sky)
-  if (moon !== last.moon) {
-    elements.moon.style.opacity = String(moon)
-    elements.moon.style.transform = `translateY(${(1 - moon) * 10}px)`
-  }
-  if (stars !== last.stars) elements.stars.style.opacity = String(stars)
-  last = { band, moon, stars, sky }
-}
-
-function seeded(seed: number) {
-  return () => {
-    seed = (seed * 16807) % 2147483647
-    return seed / 2147483647
-  }
+/** Moon disc with a faint halo; the disc fills the middle third of the texture. */
+function moonTexture() {
+  const s = 128
+  const canvas = document.createElement('canvas')
+  canvas.width = canvas.height = s
+  const ctx = canvas.getContext('2d')!
+  const c = s / 2
+  const halo = ctx.createRadialGradient(c, c, s / 6, c, c, c)
+  halo.addColorStop(0, 'rgba(226,224,214,0.22)')
+  halo.addColorStop(0.4, 'rgba(180,192,226,0.07)')
+  halo.addColorStop(1, 'rgba(180,192,226,0)')
+  ctx.fillStyle = halo
+  ctx.fillRect(0, 0, s, s)
+  const disc = ctx.createRadialGradient(c - s * 0.05, c - s * 0.05, 0, c, c, s / 6)
+  disc.addColorStop(0, '#f7f2e6')
+  disc.addColorStop(0.7, '#e4dcc8')
+  disc.addColorStop(1, '#cfc6b0')
+  ctx.fillStyle = disc
+  ctx.beginPath()
+  ctx.arc(c, c, s / 6, 0, Math.PI * 2)
+  ctx.fill()
+  const tex = new THREE.CanvasTexture(canvas)
+  tex.colorSpace = THREE.SRGBColorSpace
+  return tex
 }
 
 export function NightSky() {
   const touch = useIsTouchDevice()
-  const band = useRef<HTMLDivElement>(null)
-  const moon = useRef<HTMLDivElement>(null)
-  const stars = useRef<HTMLDivElement>(null)
+  const reduced = useReducedMotion()
+  const camera = useThree((s) => s.camera)
+  const dpr = useThree((s) => s.viewport.dpr)
+  const shell = useRef<THREE.Group>(null)
+  const starPoints = useRef<THREE.Points>(null)
+  const moonMesh = useRef<THREE.Mesh>(null)
 
-  const starList = useMemo(() => {
-    const rand = seeded(11)
-    const count = touch ? STAR_COUNT_MOBILE : STAR_COUNT
-    return Array.from({ length: count }, (_, i) => ({
-      left: 4 + rand() * 92,
-      top: 5 + Math.pow(rand(), 1.4) * 20,
-      size: rand() > 0.82 ? 2 : 1.25,
-      delay: rand() * 6,
-      duration: 4 + rand() * 5,
-      key: i,
-    }))
-  }, [touch])
+  const dome = useMemo(() => createSkyDome(DOME_RADIUS), [])
+  const stars = useMemo(() => createStarField(SKY_RADIUS, touch), [touch])
 
-  useEffect(() => {
-    if (!band.current || !moon.current || !stars.current) return
-    elements = { band: band.current, moon: moon.current, stars: stars.current }
-    last = { band: -1, moon: -1, stars: -1, sky: '' }
-    return () => {
-      elements = null
-    }
+  const moon = useMemo(() => {
+    const disc = SKY_RADIUS * Math.tan(THREE.MathUtils.degToRad(MOON_DIAMETER_DEG / 2)) * 2
+    const geometry = new THREE.PlaneGeometry(disc * 3, disc * 3)
+    const material = new THREE.MeshBasicMaterial({
+      map: moonTexture(),
+      transparent: true,
+      opacity: 0,
+      depthTest: true,
+      depthWrite: false,
+      fog: false,
+      toneMapped: false,
+    })
+    const position = direction(MOON_AZIMUTH, MOON_ELEVATION).multiplyScalar(SKY_RADIUS)
+    return { geometry, material, position }
   }, [])
 
+  useEffect(
+    () => () => {
+      dome.geometry.dispose()
+      dome.material.dispose()
+    },
+    [dome],
+  )
+  useEffect(
+    () => () => {
+      stars.geometry.dispose()
+      stars.material.dispose()
+    },
+    [stars],
+  )
+  useEffect(
+    () => () => {
+      moon.geometry.dispose()
+      moon.material.map?.dispose()
+      moon.material.dispose()
+    },
+    [moon],
+  )
+
+  useFrame((state, delta) => {
+    const g = shell.current
+    if (!g) return
+    g.position.copy(camera.position)
+    const a = dayNight.state
+    const galaxy = Math.pow(a.stars, GALAXY_CURVE)
+    updateSkyAtmosphere(a, Math.min(delta, 0.1), reduced)
+
+    const du = dome.uniforms
+    du.uHorizon.value.copy(a.fog)
+    du.uSunDir.value.copy(a.sunOffset).normalize()
+    du.uSunColor.value.copy(a.sunColor)
+    du.uSun.value = 1 - a.darkness
+    du.uGalaxy.value = galaxy
+
+    const su = stars.uniforms
+    su.uStars.value = a.stars
+    su.uGalaxy.value = galaxy
+    su.uPixelRatio.value = dpr
+    su.uTime.value = state.clock.elapsedTime
+    su.uTwinkle.value = reduced ? 0 : TWINKLE_AMOUNT
+
+    moon.material.opacity = a.moon * MOON_OPACITY
+    if (starPoints.current) starPoints.current.visible = a.stars > 0.002
+    if (moonMesh.current) moonMesh.current.visible = a.moon > 0.002
+  })
+
   return (
-    <div className="pointer-events-none absolute inset-x-0 top-0 z-[5] h-[42vh]" aria-hidden>
-      <div
-        ref={band}
-        className="absolute inset-0"
-        style={{
-          opacity: 0,
-          background: 'linear-gradient(to bottom, var(--dn-sky, #141a2e) 0%, color-mix(in srgb, var(--dn-sky, #141a2e) 55%, transparent) 38%, transparent 100%)',
-        }}
+    <group ref={shell}>
+      <mesh geometry={dome.geometry} material={dome.material} frustumCulled={false} renderOrder={-3} />
+      <points
+        ref={starPoints}
+        geometry={stars.geometry}
+        material={stars.material}
+        frustumCulled={false}
+        renderOrder={-2}
+        visible={false}
       />
-      <div ref={stars} className="absolute inset-0" style={{ opacity: 0 }}>
-        {starList.map((s) => (
-          <span
-            key={s.key}
-            className="absolute rounded-full bg-[#f4efe2]"
-            style={{
-              left: `${s.left}%`,
-              top: `${s.top}%`,
-              width: s.size,
-              height: s.size,
-              boxShadow: '0 0 4px rgba(244,239,226,0.6)',
-              animation: `dn-twinkle ${s.duration}s ease-in-out ${s.delay}s infinite`,
-            }}
-          />
-        ))}
-      </div>
-      <div ref={moon} className="absolute left-[64%] top-[7%]" style={{ opacity: 0 }}>
-        <div
-          className="h-3.5 w-3.5 rounded-full md:h-[17px] md:w-[17px]"
-          style={{
-            background: 'radial-gradient(circle at 36% 34%, #f6f1e4 0%, #e2dac6 60%, #c9c0aa 100%)',
-            boxShadow: '0 0 10px 2px rgba(236,228,206,0.22), 0 0 44px 12px rgba(170,185,225,0.1)',
-          }}
-        />
-      </div>
-    </div>
+      <mesh
+        ref={moonMesh}
+        visible={false}
+        geometry={moon.geometry}
+        material={moon.material}
+        position={moon.position}
+        frustumCulled={false}
+        renderOrder={-1}
+        onUpdate={(m) => m.lookAt(0, 0, 0)}
+      />
+    </group>
   )
 }

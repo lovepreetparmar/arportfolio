@@ -1,8 +1,21 @@
+import { Component, Suspense, type ReactNode } from 'react'
 import { useWorldState } from '../../context/WorldStateContext'
 import { useReducedMotion } from '../../hooks/useMediaQuery'
 import { CharacterController } from './CharacterController'
+import { CharacterModel } from './CharacterModel'
 import { CharacterRig } from './CharacterRig'
 import { useCharacterRefs } from './useCharacterRefs'
+
+/** If the model fails to load, render nothing so the procedural character stays visible. */
+class ModelBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false }
+  static getDerivedStateFromError() {
+    return { failed: true }
+  }
+  render() {
+    return this.state.failed ? null : this.props.children
+  }
+}
 
 export function Character() {
   const refs = useCharacterRefs()
@@ -31,6 +44,11 @@ export function Character() {
         state={characterState}
         segments={segments}
       />
+      <ModelBoundary>
+        <Suspense fallback={null}>
+          <CharacterModel refs={refs} />
+        </Suspense>
+      </ModelBoundary>
     </group>
   )
 }

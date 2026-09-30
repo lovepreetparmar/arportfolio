@@ -18,6 +18,8 @@ export type CharacterRigRefs = {
   rightHand: React.RefObject<Group | null>
   leftLeg: React.RefObject<Group | null>
   rightLeg: React.RefObject<Group | null>
+  leftKnee: React.RefObject<Group | null>
+  rightKnee: React.RefObject<Group | null>
   blazer: React.RefObject<Group | null>
   bag: React.RefObject<Group | null>
   shadow: React.RefObject<Mesh | null>
@@ -40,6 +42,8 @@ export function useCharacterRefs(): CharacterRigRefs {
   const rightHand = useRef<Group>(null)
   const leftLeg = useRef<Group>(null)
   const rightLeg = useRef<Group>(null)
+  const leftKnee = useRef<Group>(null)
+  const rightKnee = useRef<Group>(null)
   const blazer = useRef<Group>(null)
   const bag = useRef<Group>(null)
   const shadow = useRef<Mesh>(null)
@@ -61,6 +65,8 @@ export function useCharacterRefs(): CharacterRigRefs {
     rightHand,
     leftLeg,
     rightLeg,
+    leftKnee,
+    rightKnee,
     blazer,
     bag,
     shadow,

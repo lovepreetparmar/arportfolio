@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion'
 import { useCallback, useState } from 'react'
+import { audioManager } from '../../audio/AudioManager'
 import { getProjectBySlug } from '../../data/projects'
 import { getProjectWorldConfig } from '../../data/projectWorld'
 import { ProjectImageViewer } from './ProjectImageViewer'
@@ -18,8 +19,14 @@ export function ProjectRoom({ slug, onExit }: ProjectRoomProps) {
   const gallery = config?.gallery ?? []
   const viewerItem = viewerIndex !== null ? gallery[viewerIndex] ?? null : null
 
-  const openViewer = useCallback((i: number) => setViewerIndex(i), [])
-  const closeViewer = useCallback(() => setViewerIndex(null), [])
+  const openViewer = useCallback((i: number) => {
+    audioManager.play('imageOpen')
+    setViewerIndex(i)
+  }, [])
+  const closeViewer = useCallback(() => {
+    audioManager.play('imageClose')
+    setViewerIndex(null)
+  }, [])
 
   if (!project || !config) return null
 

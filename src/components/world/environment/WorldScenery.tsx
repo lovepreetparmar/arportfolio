@@ -2,8 +2,9 @@ import { useMemo } from 'react'
 import * as THREE from 'three'
 import { getProjectBySlug } from '../../../data/projects'
 import { getProjectEntrance } from '../../../data/projectWorld'
-import { getWorldScenery, type PropSpot, type TreeSpot } from '../../../data/worldScenery'
-import { createSignTexture, glowMat, WORLD_PALETTE, worldMat } from '../worldMaterials'
+import { getWorldScenery, type TreeSpot } from '../../../data/worldScenery'
+import { StreetLamp, StreetLampLights } from '../daynight/StreetLamps'
+import { createSignTexture, WORLD_PALETTE, worldMat } from '../worldMaterials'
 import { InstancedParts, type InstanceItem } from './InstancedParts'
 
 const sphereGeo = new THREE.SphereGeometry(1, 18, 14)
@@ -43,55 +44,6 @@ function treeParts(trees: TreeSpot[]) {
     }
   }
   return { trunks, canopy }
-}
-
-function Bench({ spot }: { spot: PropSpot }) {
-  const wood = worldMat(WORLD_PALETTE.wood, 0.85)
-  const dark = worldMat(WORLD_PALETTE.charcoal, 0.6, 0.2)
-  return (
-    <group position={[spot.x, 0, spot.z]} rotation={[0, spot.rot, 0]}>
-      {[-0.13, 0, 0.13].map((z) => (
-        <mesh key={z} position={[0, 0.42, z]} material={wood} castShadow receiveShadow>
-          <boxGeometry args={[1.3, 0.045, 0.11]} />
-        </mesh>
-      ))}
-      {[0.58, 0.72].map((y) => (
-        <mesh key={y} position={[0, y, -0.2]} rotation={[-0.12, 0, 0]} material={wood} castShadow>
-          <boxGeometry args={[1.3, 0.1, 0.035]} />
-        </mesh>
-      ))}
-      {[-0.55, 0.55].map((x) => (
-        <group key={x} position={[x, 0, 0]}>
-          <mesh position={[0, 0.2, 0]} material={dark} castShadow>
-            <boxGeometry args={[0.05, 0.4, 0.42]} />
-          </mesh>
-          <mesh position={[0, 0.58, -0.21]} rotation={[-0.12, 0, 0]} material={dark} castShadow>
-            <boxGeometry args={[0.045, 0.4, 0.04]} />
-          </mesh>
-        </group>
-      ))}
-    </group>
-  )
-}
-
-export function Lamp({ x, z }: { x: number; z: number }) {
-  const dark = worldMat(WORLD_PALETTE.charcoal, 0.55, 0.25)
-  return (
-    <group position={[x, 0, z]}>
-      <mesh position={[0, 0.06, 0]} material={dark} castShadow>
-        <cylinderGeometry args={[0.09, 0.11, 0.12, 12]} />
-      </mesh>
-      <mesh position={[0, 1.15, 0]} material={dark} castShadow>
-        <cylinderGeometry args={[0.028, 0.036, 2.2, 8]} />
-      </mesh>
-      <mesh position={[0, 2.34, 0]} material={glowMat(WORLD_PALETTE.glassWarm, 0.7)}>
-        <sphereGeometry args={[0.13, 16, 12]} />
-      </mesh>
-      <mesh position={[0, 2.49, 0]} material={dark}>
-        <cylinderGeometry args={[0.02, 0.09, 0.06, 12]} />
-      </mesh>
-    </group>
-  )
 }
 
 const SIGNPOST_SLUGS = ['food-creatives', 'roshan-shah', 'brand-identity']
@@ -145,7 +97,7 @@ function Signpost() {
 }
 
 export function WorldScenery() {
-  const { trees, stones, tufts, flowers, benches, lamps } = getWorldScenery()
+  const { trees, stones, tufts, flowers, lamps } = getWorldScenery()
 
   const { trunks, canopy } = useMemo(() => treeParts(trees), [trees])
   const stoneItems = useMemo<InstanceItem[]>(
@@ -187,12 +139,10 @@ export function WorldScenery() {
       <InstancedParts geometry={stoneGeo} material={stoneMat} items={stoneItems} castShadow receiveShadow />
       <InstancedParts geometry={tuftGeo} material={whiteMat} items={tuftItems} />
       <InstancedParts geometry={flowerGeo} material={whiteMat} items={flowerItems} />
-      {benches.map((b, i) => (
-        <Bench key={i} spot={b} />
-      ))}
       {lamps.map((l, i) => (
-        <Lamp key={i} x={l.x} z={l.z} />
+        <StreetLamp key={i} x={l.x} z={l.z} />
       ))}
+      <StreetLampLights lamps={lamps} />
       <Signpost />
     </group>
   )

@@ -1,34 +1,57 @@
 import { useFrame, useThree } from '@react-three/fiber'
 import { useRef } from 'react'
 import * as THREE from 'three'
-import { useWorldState } from '../../context/WorldStateContext'
-import { territoryMood } from '../../data/world3d'
+import { useReducedMotion } from '../../hooks/useMediaQuery'
+import { dayNight, tickDayNight } from './daynight/DayNightController'
+import { applyNightLighting } from './daynight/nightLighting'
+import { updateNightSky } from './daynight/NightSky'
 import { mapView } from './mapNavigation'
 
-const SUN_OFFSET = new THREE.Vector3(9, 15, 7)
 const FOG_NEAR = 24
 const FOG_FAR = 68
 /** Extra fog distance per unit of zoom-out, roughly the camera-to-focus distance at zoom 1. */
 const FOG_ZOOM_RANGE = 17
+/** Night haze closes in a little so the lit village reads against a soft indigo distance. */
+const NIGHT_FOG_PULL = 6
 const SHADOW_EXTENT = 18
+const INITIAL = dayNight.state
 
 export function WorldEnvironment() {
-  const { activeTerritory } = useWorldState()
-  const mood = territoryMood[activeTerritory] ?? territoryMood.branding
+  const reduced = useReducedMotion()
   const sun = useRef<THREE.DirectionalLight>(null)
+  const fill = useRef<THREE.DirectionalLight>(null)
+  const hemi = useRef<THREE.HemisphereLight>(null)
   const shadowExtent = useRef(SHADOW_EXTENT)
   const scene = useThree((s) => s.scene)
 
-  useFrame(() => {
+  useFrame((_, delta) => {
+    tickDayNight(Math.min(delta, 0.1), reduced)
+    const a = dayNight.state
+    applyNightLighting(a)
+    updateNightSky(a)
+
     const zoomOut = Math.max(0, mapView.zoom - 1)
+    if (scene.background instanceof THREE.Color) scene.background.copy(a.fog)
     if (scene.fog instanceof THREE.Fog) {
-      scene.fog.near = FOG_NEAR + zoomOut * FOG_ZOOM_RANGE
-      scene.fog.far = FOG_FAR + zoomOut * FOG_ZOOM_RANGE
+      scene.fog.color.copy(a.fog)
+      scene.fog.near = FOG_NEAR + zoomOut * FOG_ZOOM_RANGE - a.darkness * NIGHT_FOG_PULL
+      scene.fog.far = FOG_FAR + zoomOut * FOG_ZOOM_RANGE - a.darkness * NIGHT_FOG_PULL
+    }
+    if (hemi.current) {
+      hemi.current.color.copy(a.hemiSky)
+      hemi.current.groundColor.copy(a.hemiGround)
+      hemi.current.intensity = a.hemiIntensity
+    }
+    if (fill.current) {
+      fill.current.color.copy(a.fillColor)
+      fill.current.intensity = a.fillIntensity
     }
 
     const light = sun.current
     if (!light) return
-    light.position.set(mapView.focusX + SUN_OFFSET.x, SUN_OFFSET.y, mapView.focusZ + SUN_OFFSET.z)
+    light.color.copy(a.sunColor)
+    light.intensity = a.sunIntensity
+    light.position.set(mapView.focusX + a.sunOffset.x, a.sunOffset.y, mapView.focusZ + a.sunOffset.z)
     light.target.position.set(mapView.focusX, 0, mapView.focusZ)
     light.target.updateMatrixWorld()
 
@@ -46,13 +69,13 @@ export function WorldEnvironment() {
 
   return (
     <>
-      <color attach="background" args={[mood.fog]} />
-      <fog attach="fog" args={[mood.fog, FOG_NEAR, FOG_FAR]} />
-      <hemisphereLight args={['#fff8ec', '#d9ccb4', mood.ambient]} />
+      <color attach="background" args={[INITIAL.fog]} />
+      <fog attach="fog" args={[INITIAL.fog, FOG_NEAR, FOG_FAR]} />
+      <hemisphereLight ref={hemi} args={[INITIAL.hemiSky, INITIAL.hemiGround, INITIAL.hemiIntensity]} />
       <directionalLight
         ref={sun}
-        intensity={1.55}
-        color="#fff0dc"
+        intensity={INITIAL.sunIntensity}
+        color={INITIAL.sunColor}
         castShadow
         shadow-mapSize={[2048, 2048]}
         shadow-camera-left={-SHADOW_EXTENT}
@@ -64,7 +87,7 @@ export function WorldEnvironment() {
         shadow-bias={-0.0004}
         shadow-normalBias={0.03}
       />
-      <directionalLight position={[-6, 6, -4]} intensity={0.22} color="#e9eef2" />
+      <directionalLight ref={fill} position={[-6, 6, -4]} intensity={INITIAL.fillIntensity} color={INITIAL.fillColor} />
     </>
   )
 }

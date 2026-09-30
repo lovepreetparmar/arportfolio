@@ -11,10 +11,12 @@ import { RoomTransitionOverlay } from '../components/project-room/RoomTransition
 import { useWorldJourneyOrchestrator } from '../hooks/useWorldJourneyOrchestrator'
 import { useWorldPointer } from '../hooks/useWorldPointer'
 import { useReducedMotion } from '../hooks/useMediaQuery'
+import { useJourneyAudio } from '../audio/useJourneyAudio'
 
 function WorldExperience() {
   useWorldPointer()
   useWorldJourneyOrchestrator()
+  useJourneyAudio()
   const reduced = useReducedMotion()
   const [opened, setOpened] = useState(false)
   const [aboutOpen, setAboutOpen] = useState(false)

@@ -1,22 +1,33 @@
 import { useFrame } from '@react-three/fiber'
-import { useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import * as THREE from 'three'
 import { contactWorld } from '../../data/world3d'
 import { OPENING_FOCUS_SLUG, REVEAL } from '../../data/worldLayout'
 import { useWorldState } from '../../context/WorldStateContext'
 import { useReducedMotion } from '../../hooks/useMediaQuery'
+import { useOptionalSitting } from '../world/benches/SittingContext'
+import { isHoldingPosition } from '../world/benches/SittingState'
 import {
   WALK_SPEED,
   damp,
   dampAngle,
   initBlinkState,
+  resolveCharacterMotion,
   resolveCharacterState,
   updateBlink,
   walkPhaseAdvance,
   type BlinkState,
+  type CharacterMotion,
   type CharacterState,
 } from './CharacterAnimations'
+import { characterSignals } from './characterSignals'
+import { applySittingPose } from './sittingPose'
 import type { CharacterRigRefs } from './useCharacterRefs'
+
+/** Equivalent of `target` within ±π of `current`, so damped turns take the short way round. */
+function nearestAngle(current: number, target: number) {
+  return current + Math.atan2(Math.sin(target - current), Math.cos(target - current))
+}
 
 const POINT_SLUGS = new Set([OPENING_FOCUS_SLUG, 'brand-identity'])
 
@@ -31,7 +42,10 @@ export function CharacterController({ refs }: { refs: CharacterRigRefs }) {
     activeTerritory,
     nearProjectSlug,
     setCharacterState,
+    journeyPhase,
   } = useWorldState()
+  const sittingRef = useOptionalSitting()
+  const seatedIdle = useRef(0)
   const reduced = useReducedMotion()
   const walkPhase = useRef(0)
   const idlePhase = useRef(Math.random() * 10)
@@ -41,14 +55,24 @@ export function CharacterController({ refs }: { refs: CharacterRigRefs }) {
   const headLook = useRef({ x: 0, y: 0 })
   const eyeLook = useRef({ x: 0, y: 0 })
 
+  useEffect(
+    () => () => {
+      characterSignals.present = false
+      characterSignals.walking = false
+    },
+    [],
+  )
+
   useFrame((state, delta) => {
     if (!refs.root.current || !refs.hips.current || !refs.chest.current) return
     if (!blink.current) blink.current = initBlinkState(state.clock.elapsedTime)
 
+    const sit = sittingRef?.current ?? null
+    const holding = !!sit && isHoldingPosition(sit)
     const dx = target.x - character.x
     const dz = target.z - character.z
     const dist = Math.hypot(dx, dz)
-    const isWalking = dist > 0.055
+    const isWalking = !holding && dist > 0.055
 
     if (isWalking) {
       const step = Math.min(dist, WALK_SPEED * delta)
@@ -59,7 +83,17 @@ export function CharacterController({ refs }: { refs: CharacterRigRefs }) {
       setMoving(false)
     }
 
-    refs.root.current.position.set(character.x, 0, character.z)
+    const motion: CharacterMotion = resolveCharacterMotion(isWalking, sit?.phase ?? 'none', journeyPhase)
+    const sitAmount = sit?.amount ?? 0
+    const seatWeight = sitAmount > 0 && sit ? THREE.MathUtils.smootherstep(sitAmount, 0, 1) : 0
+    const rootX = sit ? character.x + (sit.seat.x - sit.approach.x) * seatWeight : character.x
+    const rootZ = sit ? character.z + (sit.seat.z - sit.approach.z) * seatWeight : character.z
+    refs.root.current.position.set(rootX, 0, rootZ)
+    characterSignals.present = true
+    characterSignals.walking = isWalking
+    characterSignals.walkPhase = walkPhase.current
+    characterSignals.x = rootX
+    characterSignals.z = rootZ
 
     const nearContact = Math.hypot(character.x - contactWorld.x, character.z - contactWorld.z) < 10
     const nearProject =
@@ -80,13 +114,18 @@ export function CharacterController({ refs }: { refs: CharacterRigRefs }) {
     }
 
     let targetYaw = bodyYaw.current
-    if (isWalking) {
-      targetYaw = Math.atan2(dx, dz)
+    let turnRate = isWalking ? 9 : 5
+    if (holding && sit) {
+      targetYaw = nearestAngle(bodyYaw.current, sit.facingYaw)
+      turnRate = 7
+    } else if (isWalking) {
+      targetYaw = nearestAngle(bodyYaw.current, Math.atan2(dx, dz))
     } else if (lookAt && nearProject) {
-      targetYaw = Math.atan2(lookAt.x - character.x, lookAt.z - character.z)
+      targetYaw = nearestAngle(bodyYaw.current, Math.atan2(lookAt.x - character.x, lookAt.z - character.z))
     }
-    bodyYaw.current = dampAngle(bodyYaw.current, targetYaw, isWalking ? 9 : 5, delta)
+    bodyYaw.current = dampAngle(bodyYaw.current, targetYaw, reduced && holding ? 30 : turnRate, delta)
     refs.hips.current.rotation.y = bodyYaw.current
+    if (sit) sit.bodyYaw = bodyYaw.current
 
     const t = state.clock.elapsedTime + idlePhase.current
     const breathe = Math.sin(t * 1.05) * 0.014
@@ -164,11 +203,14 @@ export function CharacterController({ refs }: { refs: CharacterRigRefs }) {
       refs.blazer.current.rotation.z = sway * 0.25
     }
 
+    seatedIdle.current = damp(seatedIdle.current, motion === 'sitting' && sitAmount >= 1 && !reduced ? 1 : 0, 1.5, delta)
+    applySittingPose(refs, sitAmount, t, seatedIdle.current)
+
     if (refs.shadow.current) {
-      const stretch = isWalking ? 1.18 : 1
+      const stretch = isWalking ? 1.18 : 1 + seatWeight * 0.25
       refs.shadow.current.scale.set(stretch, stretch * 0.88, 1)
       const sm = refs.shadow.current.material as THREE.MeshBasicMaterial
-      sm.opacity = isWalking ? 0.13 : 0.17
+      sm.opacity = isWalking ? 0.13 : 0.17 - seatWeight * 0.07
     }
   })
 

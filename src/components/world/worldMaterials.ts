@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { registerNightMaterial } from './daynight/nightLighting'
 
 /** Warm editorial palette for the world: cream base, muted greens, wood, stone, terracotta. */
 export const WORLD_PALETTE = {
@@ -55,9 +56,9 @@ export function worldMat(color: Hex, roughness = 0.9, metalness = 0): THREE.Mesh
 
 const glowCache = new Map<string, THREE.MeshStandardMaterial>()
 
-/** Softly lit interior / lamp glass. */
-export function glowMat(color: Hex = WORLD_PALETTE.glassWarm, intensity = 0.55): THREE.MeshStandardMaterial {
-  const key = `${color}|${intensity}`
+/** Softly lit interior / lamp glass; `nightColor` sets the lamplight tone it warms to after dark. */
+export function glowMat(color: Hex = WORLD_PALETTE.glassWarm, intensity = 0.55, nightColor?: Hex): THREE.MeshStandardMaterial {
+  const key = `${color}|${intensity}|${nightColor ?? ''}`
   let m = glowCache.get(key)
   if (!m) {
     m = new THREE.MeshStandardMaterial({
@@ -66,6 +67,7 @@ export function glowMat(color: Hex = WORLD_PALETTE.glassWarm, intensity = 0.55):
       emissiveIntensity: intensity,
       roughness: 0.6,
     })
+    registerNightMaterial(m, 'windows', intensity, { nightColor })
     glowCache.set(key, m)
   }
   return m

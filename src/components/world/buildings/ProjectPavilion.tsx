@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import type { Project } from '../../../data/projects'
 import type { ProjectWorldConfig } from '../../../data/projectWorld'
 import { ARCHETYPE_FOOTPRINT, type PavilionStyle } from '../../../data/worldLayout'
+import { WindowSpill } from '../daynight/BuildingLighting'
 import { WORLD_PALETTE, worldMat } from '../worldMaterials'
 import { Door, EaselPoster, EntranceApron, GableRoof, Planter, SignBoard, signName, Window } from './BuildingKit'
 
@@ -116,6 +117,9 @@ export function ProjectPavilion({
           mullions="cross"
           sill={s.base}
         />
+      ))}
+      {[-1.18, 1.18].map((x) => (
+        <WindowSpill key={x} x={x} z={FZ} width={0.7} strength={0.22} />
       ))}
       <Door width={0.88} height={2} z={FZ} color={s.door} frameColor={s.frame} />
       <Planter position={[-1.3, 0, FZ + 0.35]} pot={s.pot} kind="bush" scale={0.85} />

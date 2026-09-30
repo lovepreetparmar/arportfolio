@@ -115,7 +115,13 @@ export function HandMesh({
 }
 
 /** Wide-leg pleated trousers with the shoe toe peeking out; feet rest on the ground. */
-export function LegAssembly({ segments }: { segments: number }) {
+export function LegAssembly({
+  segments,
+  kneeRef,
+}: {
+  segments: number
+  kneeRef?: React.Ref<THREE.Group>
+}) {
   return (
     <group>
       <mesh position={[0, -0.02, 0]} material={trouser}>
@@ -124,18 +130,28 @@ export function LegAssembly({ segments }: { segments: number }) {
       <mesh position={[0, -0.2, 0]} material={trouser}>
         <cylinderGeometry args={[0.08, 0.071, 0.4, segments]} />
       </mesh>
-      <mesh position={[0, -0.6, 0]} material={trouser}>
-        <cylinderGeometry args={[0.071, 0.082, 0.42, segments]} />
+      <mesh position={[0, -0.225, 0.076]} rotation={[-0.02, 0, 0]} material={trouserDeep}>
+        <boxGeometry args={[0.004, 0.35, 0.004]} />
       </mesh>
-      <mesh position={[0, -0.36, 0.076]} rotation={[-0.02, 0, 0]} material={trouserDeep}>
-        <boxGeometry args={[0.004, 0.62, 0.004]} />
-      </mesh>
-      <mesh position={[0, -0.805, 0]} material={trouserDeep}>
-        <cylinderGeometry args={[0.083, 0.083, 0.012, segments]} />
-      </mesh>
-      <mesh position={[0, -0.808, 0.05]} rotation={[Math.PI / 2, 0, 0]} scale={[1.05, 1, 0.75]} material={shoe}>
-        <capsuleGeometry args={[0.036, 0.09, 6, 12]} />
-      </mesh>
+      <group ref={kneeRef} position={[0, -0.4, 0]}>
+        <mesh material={trouser}>
+          <sphereGeometry args={[0.071, segments, 12]} />
+        </mesh>
+        <group position={[0, 0.4, 0]}>
+          <mesh position={[0, -0.6, 0]} material={trouser}>
+            <cylinderGeometry args={[0.071, 0.082, 0.42, segments]} />
+          </mesh>
+          <mesh position={[0, -0.535, 0.076]} rotation={[-0.02, 0, 0]} material={trouserDeep}>
+            <boxGeometry args={[0.004, 0.27, 0.004]} />
+          </mesh>
+          <mesh position={[0, -0.805, 0]} material={trouserDeep}>
+            <cylinderGeometry args={[0.083, 0.083, 0.012, segments]} />
+          </mesh>
+          <mesh position={[0, -0.808, 0.05]} rotation={[Math.PI / 2, 0, 0]} scale={[1.05, 1, 0.75]} material={shoe}>
+            <capsuleGeometry args={[0.036, 0.09, 6, 12]} />
+          </mesh>
+        </group>
+      </group>
     </group>
   )
 }

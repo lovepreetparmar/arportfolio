@@ -7,6 +7,8 @@ import { CharacterHair, CharacterHairBack } from './CharacterHair'
 import type { CharacterRigRefs } from './useCharacterRefs'
 
 const HEAD_SCALE = 0.84
+/** Elbow pivot, where the upper sleeve meets the forearm (arm space). */
+const ELBOW_Y = 0.3
 
 type CharacterRigProps = {
   refs: CharacterRigRefs
@@ -36,9 +38,11 @@ export function CharacterRig({ refs, accent, territory, state, segments }: Chara
               <group ref={refs.leftShoulder}>
                 <group ref={refs.leftArm}>
                   <LimbUpper segments={segments} />
-                  <group ref={refs.leftHand}>
-                    <LimbLower segments={segments} />
-                    <HandMesh segments={segments} side={-1} wrist="thread" />
+                  <group ref={refs.leftHand} position={[0, -ELBOW_Y, 0]}>
+                    <group position={[0, ELBOW_Y, 0]}>
+                      <LimbLower segments={segments} />
+                      <HandMesh segments={segments} side={-1} wrist="thread" />
+                    </group>
                   </group>
                 </group>
               </group>
@@ -48,9 +52,11 @@ export function CharacterRig({ refs, accent, territory, state, segments }: Chara
               <group ref={refs.rightShoulder}>
                 <group ref={refs.rightArm}>
                   <LimbUpper segments={segments} />
-                  <group ref={refs.rightHand}>
-                    <LimbLower segments={segments} />
-                    <HandMesh segments={segments} side={1} wrist="watch" />
+                  <group ref={refs.rightHand} position={[0, -ELBOW_Y, 0]}>
+                    <group position={[0, ELBOW_Y, 0]}>
+                      <LimbLower segments={segments} />
+                      <HandMesh segments={segments} side={1} wrist="watch" />
+                    </group>
                   </group>
                 </group>
               </group>
@@ -80,11 +86,11 @@ export function CharacterRig({ refs, accent, territory, state, segments }: Chara
         </group>
 
         <group ref={refs.leftLeg} position={[-0.085, 0.02, 0]}>
-          <LegAssembly segments={segments} />
+          <LegAssembly segments={segments} kneeRef={refs.leftKnee} />
         </group>
 
         <group ref={refs.rightLeg} position={[0.085, 0.02, 0]}>
-          <LegAssembly segments={segments} />
+          <LegAssembly segments={segments} kneeRef={refs.rightKnee} />
         </group>
       </group>
     </group>

@@ -3,6 +3,8 @@ import * as THREE from 'three'
 import type { Project } from '../../../data/projects'
 import type { ProjectWorldConfig } from '../../../data/projectWorld'
 import { ARCHETYPE_FOOTPRINT } from '../../../data/worldLayout'
+import { InteriorLight, LightPool, WindowSpill } from '../daynight/BuildingLighting'
+import { lampGlassMaterial } from '../daynight/nightLighting'
 import { glowMat, WORLD_PALETTE, worldMat } from '../worldMaterials'
 import { Door, EntranceApron, Planter, ProjectPoster, SignBoard, signName, Window } from './BuildingKit'
 
@@ -80,6 +82,7 @@ export function JewelleryBoutique({ project, config }: { project: Project; confi
             mullions="none"
             arch
             glow={0.5}
+            nightGlass="#ffa94d"
           />
           <mesh position={[x, 0.8, FZ + 0.16]} material={ivory} castShadow>
             <cylinderGeometry args={[0.13, 0.15, 0.28, 16]} />
@@ -100,7 +103,15 @@ export function JewelleryBoutique({ project, config }: { project: Project; confi
           )}
         </group>
       ))}
-      <Door width={0.9} height={2.05} z={FZ + 0.08} color={STOREFRONT} frameColor={WORLD_PALETTE.gold} glazed />
+      <Door
+        width={0.9}
+        height={2.05}
+        z={FZ + 0.08}
+        color={STOREFRONT}
+        frameColor={WORLD_PALETTE.gold}
+        glazed
+        entranceLight="none"
+      />
 
       <SignBoard
         text={signName(project.title, config.environment.exteriorLabel)}
@@ -108,6 +119,7 @@ export function JewelleryBoutique({ project, config }: { project: Project; confi
         height={0.44}
         position={[0, 2.8, FZ + 0.1]}
         style={signStyle}
+        nightGlow={0.9}
       />
 
       {[-1, 1].map((s) => (
@@ -115,11 +127,18 @@ export function JewelleryBoutique({ project, config }: { project: Project; confi
           <mesh material={gold}>
             <boxGeometry args={[0.04, 0.2, 0.12]} />
           </mesh>
-          <mesh position={[0, 0.08, 0.1]} material={glowMat(WORLD_PALETTE.glassWarm, 0.8)}>
+          <mesh position={[0, 0.08, 0.1]} material={lampGlassMaterial('#ffc27a', 1.6, 0.8)}>
             <sphereGeometry args={[0.07, 14, 10]} />
           </mesh>
+          <LightPool position={[s * 0.1, 0.03, 0.9]} size={[1.3, 1.5]} color="#ffd6a2" strength={0.3} />
         </group>
       ))}
+
+      {[-1.28, 1.28].map((x) => (
+        <WindowSpill key={x} x={x} z={FZ + 0.3} width={1} strength={0.4} />
+      ))}
+      <LightPool position={[0, 0.03, FZ + 2.3]} size={[4.2, 2.4]} color="#ffcf94" strength={0.24} />
+      <InteriorLight position={[0, 1.5, FZ + 0.9]} color="#ffc98a" intensity={4.5} distance={5} />
 
       <Planter position={[-2.05, 0, FZ + 0.4]} pot={STOREFRONT} kind="topiary" />
       <Planter position={[2.05, 0, FZ + 0.4]} pot={STOREFRONT} kind="topiary" />

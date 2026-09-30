@@ -4,6 +4,8 @@ import { site } from '../../data/site'
 import { useWorldState } from '../../context/WorldStateContext'
 import { contactWorld } from '../../data/world3d'
 import { ABOUT_POSITION } from '../../data/worldLayout'
+import { useDayNight } from '../world/daynight/DayNightController'
+import { WorldToggles } from './WorldToggles'
 
 type WorldUIProps = {
   onFlyToContact: () => void
@@ -15,10 +17,13 @@ export function WorldUI({ onFlyToContact, onOpenProjectDirect }: WorldUIProps) {
   const { setTarget, navigateToProject, journeyPhase } = useWorldState()
   const traveling = journeyPhase === 'walking' || journeyPhase === 'arrived' || journeyPhase === 'doorOpening'
   const [indexOpen, setIndexOpen] = useState(false)
+  const { dark } = useDayNight()
 
   return (
     <>
-      <div className="pointer-events-none fixed inset-0 z-40 flex flex-col justify-between p-5 md:p-8">
+      <div
+        className={`pointer-events-none fixed inset-0 z-40 flex flex-col justify-between p-5 transition-colors duration-1000 md:p-8 ${dark ? 'text-[#efe9dc]' : ''}`}
+      >
         <div className="pointer-events-auto flex items-start justify-between">
           <p className="text-sm font-semibold tracking-tight">ANUSHRI RAINA</p>
           <div className="flex gap-6 text-xs tracking-[0.25em] uppercase">
@@ -35,16 +40,21 @@ export function WorldUI({ onFlyToContact, onOpenProjectDirect }: WorldUIProps) {
           </div>
         </div>
         <div className="flex items-end justify-between">
-          <p className="text-[10px] tracking-[0.3em] text-muted uppercase">
+          <p
+            className={`text-[10px] tracking-[0.3em] uppercase transition-colors duration-1000 ${dark ? 'text-[#b9b4c4]' : 'text-muted'}`}
+          >
             {traveling ? 'Walking to project…' : 'Select a location · Click to walk · WASD to move'}
           </p>
-          <button
-            type="button"
-            className="pointer-events-auto text-xs tracking-[0.2em] uppercase"
-            onClick={() => setTarget({ x: contactWorld.x, y: 0, z: contactWorld.z })}
-          >
-            Contact
-          </button>
+          <div className="pointer-events-auto flex items-center gap-5">
+            <WorldToggles />
+            <button
+              type="button"
+              className="text-xs tracking-[0.2em] uppercase"
+              onClick={() => setTarget({ x: contactWorld.x, y: 0, z: contactWorld.z })}
+            >
+              Contact
+            </button>
+          </div>
         </div>
       </div>
 

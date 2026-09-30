@@ -3,6 +3,7 @@ import * as THREE from 'three'
 import type { Project } from '../../../data/projects'
 import type { ProjectWorldConfig } from '../../../data/projectWorld'
 import { ARCHETYPE_FOOTPRINT } from '../../../data/worldLayout'
+import { WindowSpill } from '../daynight/BuildingLighting'
 import { glowMat, WORLD_PALETTE, worldMat } from '../worldMaterials'
 import { Door, EntranceApron, ProjectPoster, SignBoard, signName, Window } from './BuildingKit'
 
@@ -91,7 +92,9 @@ export function DesignStudio({ project, config }: { project: Project; config: Pr
         frameColor={WORLD_PALETTE.ink}
         handleColor="#d8d2c6"
         glazed
+        entranceLight="bar"
       />
+      <WindowSpill x={-1.42} z={FZ} width={1.62} strength={0.24} />
       {project.images[0] && (
         <ProjectPoster
           src={project.images[0]}

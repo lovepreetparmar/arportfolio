@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import type { Project } from '../../../data/projects'
 import type { ProjectWorldConfig } from '../../../data/projectWorld'
 import { ARCHETYPE_FOOTPRINT } from '../../../data/worldLayout'
+import { WindowSpill } from '../daynight/BuildingLighting'
 import { createStripeTexture, WORLD_PALETTE, worldMat } from '../worldMaterials'
 import { Awning, Door, EaselPoster, EntranceApron, GableRoof, Planter, SignBoard, signName, Window } from './BuildingKit'
 
@@ -103,7 +104,18 @@ export function FoodKitchen({ project, config }: { project: Project; config: Pro
           glow={0.34}
         />
       ))}
-      <Door width={0.95} height={2.08} z={FZ} color={WORLD_PALETTE.woodDark} frameColor={WORLD_PALETTE.charcoal} glazed />
+      {[-1.55, 1.55].map((x) => (
+        <WindowSpill key={x} x={x} z={FZ} width={1.3} />
+      ))}
+      <Door
+        width={0.95}
+        height={2.08}
+        z={FZ}
+        color={WORLD_PALETTE.woodDark}
+        frameColor={WORLD_PALETTE.charcoal}
+        glazed
+        entranceLight="pendant"
+      />
       <Awning width={W - 0.25} depth={0.95} y={2.5} z={FZ} texture={stripes} valance={WORLD_PALETTE.terracotta} />
 
       <SignBoard

@@ -11,6 +11,20 @@ export type CharacterState =
 
 export const WALK_SPEED = 2.47
 
+/** Locomotion layer the controller runs, independent of the expressive `CharacterState`. */
+export type CharacterMotion = 'idle' | 'walking' | 'sitting' | 'standing' | 'enteringProject'
+
+export function resolveCharacterMotion(
+  isWalking: boolean,
+  sitPhase: string,
+  journeyPhase: string,
+): CharacterMotion {
+  if (sitPhase === 'sitting' || sitPhase === 'seated') return 'sitting'
+  if (sitPhase === 'standing') return 'standing'
+  if (journeyPhase !== 'world' && journeyPhase !== 'exiting') return 'enteringProject'
+  return isWalking ? 'walking' : 'idle'
+}
+
 export function damp(current: number, target: number, lambda: number, delta: number) {
   return THREE.MathUtils.lerp(current, target, 1 - Math.exp(-lambda * delta))
 }

@@ -2,6 +2,7 @@ import { useTexture } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
 import { createContext, useContext, useMemo, useRef, type MutableRefObject } from 'react'
 import * as THREE from 'three'
+import { EntranceLight, useSignLightMaterial, type EntranceLightStyle } from '../daynight/BuildingLighting'
 import { createSignTexture, glowMat, WORLD_PALETTE, worldMat, type SignStyle } from '../worldMaterials'
 
 type Vec3 = [number, number, number]
@@ -28,10 +29,21 @@ type DoorProps = {
   frameColor: string
   handleColor?: string
   glazed?: boolean
+  /** Night light over the entrance; every door throws a warm pool onto its step. */
+  entranceLight?: EntranceLightStyle
 }
 
 /** Hinged door on the building's front; swings outward as the location opens. */
-export function Door({ width, height, z, color, frameColor, handleColor = WORLD_PALETTE.gold, glazed }: DoorProps) {
+export function Door({
+  width,
+  height,
+  z,
+  color,
+  frameColor,
+  handleColor = WORLD_PALETTE.gold,
+  glazed,
+  entranceLight = 'lantern',
+}: DoorProps) {
   const { openRef } = useLocationContext()
   const hinge = useRef<THREE.Group>(null)
   const leaf = worldMat(color, 0.7, 0.05)
@@ -74,6 +86,7 @@ export function Door({ width, height, z, color, frameColor, handleColor = WORLD_
           <sphereGeometry args={[0.035, 12, 10]} />
         </mesh>
       </group>
+      <EntranceLight doorWidth={width} doorHeight={height} z={z} style={entranceLight} metal={frameColor} />
     </group>
   )
 }
@@ -87,9 +100,22 @@ type WindowProps = {
   arch?: boolean
   sill?: string
   glow?: number
+  /** Lamplight tone of the glass after dark. */
+  nightGlass?: string
 }
 
-export function Window({ width, height, position, frameColor, mullions = 'cross', arch, sill, glow = 0.28 }: WindowProps) {
+export function Window({
+  width,
+  height,
+  position,
+  frameColor,
+  mullions = 'cross',
+  arch,
+  sill,
+  glow = 0.28,
+  nightGlass,
+}: WindowProps) {
+  const glass = glowMat('#efdcb7', glow, nightGlass)
   const frame = worldMat(frameColor, 0.6, 0.1)
   const t = 0.05
   const bars: { p: Vec3; s: Vec3 }[] = []
@@ -103,11 +129,11 @@ export function Window({ width, height, position, frameColor, mullions = 'cross'
   }
   return (
     <group position={position}>
-      <mesh position={[0, 0, 0.005]} material={glowMat('#efdcb7', glow)}>
+      <mesh position={[0, 0, 0.005]} material={glass}>
         <planeGeometry args={[width, height]} />
       </mesh>
       {arch && (
-        <mesh position={[0, height / 2, 0.005]} material={glowMat('#efdcb7', glow)}>
+        <mesh position={[0, height / 2, 0.005]} material={glass}>
           <circleGeometry args={[width / 2, 24, 0, Math.PI]} />
         </mesh>
       )}
@@ -151,21 +177,33 @@ type SignBoardProps = {
   style: SignStyle
   depth?: number
   edgeColor?: string
+  /** How brightly the sign face reads after dark. */
+  nightGlow?: number
 }
 
-export function SignBoard({ text, width, height, position, rotation, style, depth = 0.05, edgeColor }: SignBoardProps) {
+export function SignBoard({
+  text,
+  width,
+  height,
+  position,
+  rotation,
+  style,
+  depth = 0.05,
+  edgeColor,
+  nightGlow = 0.5,
+}: SignBoardProps) {
   const texture = useMemo(
     () => createSignTexture(text, width / height, style),
     [text, width, height, style.background, style.color, style.subtitle, style.serif, style.border],
   )
+  const faceMat = useSignLightMaterial(texture, nightGlow)
   return (
     <group position={position} rotation={rotation}>
       <mesh material={worldMat(edgeColor ?? style.background, 0.8)} castShadow>
         <boxGeometry args={[width, height, depth]} />
       </mesh>
-      <mesh position={[0, 0, depth / 2 + 0.002]}>
+      <mesh position={[0, 0, depth / 2 + 0.002]} material={faceMat}>
         <planeGeometry args={[width, height]} />
-        <meshStandardMaterial map={texture} roughness={0.85} />
       </mesh>
     </group>
   )

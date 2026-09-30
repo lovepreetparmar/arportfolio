@@ -16,7 +16,12 @@ import { WorldTerrain } from './environment/WorldTerrain'
 import { WorldPaths } from './environment/WorldPaths'
 import { WorldScenery } from './environment/WorldScenery'
 import { ProjectLocation } from './buildings/ProjectLocation'
+import { SittingDirector, WorldBenches } from './benches/BenchInteraction'
+import { SittingProvider } from './benches/SittingContext'
 import { useWorldState } from '../../context/WorldStateContext'
+import { AudioSceneBridge } from '../../audio/AudioSceneBridge'
+import { CharacterNightLight } from './daynight/CharacterNightLight'
+import { NightSky } from './daynight/NightSky'
 
 type WorldProps = {
   onSelectProject: (slug: string) => void
@@ -39,7 +44,11 @@ function WorldScene({ onSelectProject }: WorldProps) {
       <WorldJourneyBridge />
       <WorldKeyboardControls />
       <WorldProximity />
+      <SittingDirector />
+      <WorldBenches />
       {!hideCharacter && <Character />}
+      <CharacterNightLight />
+      <AudioSceneBridge />
       <AboutSign />
       <ContactSign />
       {projects.map((p) => (
@@ -73,9 +82,12 @@ export function World({ onSelectProject, dimmed }: WorldProps) {
         gl={{ antialias: true, alpha: false }}
       >
         <Suspense fallback={null}>
-          <WorldScene onSelectProject={onSelectProject} />
+          <SittingProvider>
+            <WorldScene onSelectProject={onSelectProject} />
+          </SittingProvider>
         </Suspense>
       </Canvas>
+      <NightSky />
     </div>
   )
 }

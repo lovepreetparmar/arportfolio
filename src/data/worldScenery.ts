@@ -1,3 +1,4 @@
+import { distanceToBenches, getWorldBenches } from './worldBenches'
 import { distanceToPaths, getPathBranches } from './worldPaths'
 import { ARCHETYPE_FOOTPRINT, PLAZA_RADIUS, WORLD_HUB, worldProjectSlots } from './worldLayout'
 
@@ -58,6 +59,7 @@ function build() {
     if (!clearOfPlaza(x, z, kind === 'shrub' ? 0.4 : 1.2)) return false
     if (!clearOfBuildings(x, z, kind === 'shrub' ? 0.35 : 0.9)) return false
     if (distanceToPaths({ x, z }) < pathClear) return false
+    if (distanceToBenches(x, z) < (kind === 'shrub' ? 1.1 : 1.5)) return false
     if (!farEnough(x, z, kind === 'shrub' ? 1.1 : 2.1)) return false
     trees.push({ x, z, kind, scale, rot: rand() * Math.PI * 2, tint: Math.floor(rand() * 3) })
     return true
@@ -83,6 +85,15 @@ function build() {
       const p = toWorld(lx, lz)
       tryTree(p.x, p.z, kind, sc * (0.9 + rand() * 0.2))
     }
+  }
+
+  // A shade tree and a shrub behind each scenic bench.
+  for (const b of getWorldBenches()) {
+    if (!b.scenic) continue
+    const fx = Math.sin(b.rot)
+    const fz = Math.cos(b.rot)
+    tryTree(b.x - fx * 1.7 + fz * 0.5, b.z - fz * 1.7 - fx * 0.5, 'round', 1.15)
+    tryTree(b.x - fx * 1.25 - fz * 1.25, b.z - fz * 1.25 + fx * 1.25, 'shrub', 0.75)
   }
 
   // Foreground framing near the opening camera.
@@ -127,7 +138,7 @@ function build() {
       const rr = Math.sqrt(rand()) * p.radius * 0.75
       const x = p.x + Math.cos(a) * rr
       const z = p.z + Math.sin(a) * rr
-      if (distanceToPaths({ x, z }) < 0.85) continue
+      if (distanceToPaths({ x, z }) < 0.85 || distanceToBenches(x, z) < 0.9) continue
       if (rand() < 0.3) flowers.push({ x, z, scale: 0.7 + rand() * 0.6, tint: rand() > 0.55 ? 1 : 0 })
       else tufts.push({ x, z, scale: 0.7 + rand() * 0.7, tint: Math.floor(rand() * 2) })
     }
@@ -146,7 +157,7 @@ function build() {
       const off = 0.82 + rand() * 0.25
       const x = p.x + (-tz / len) * off * side
       const z = p.z + (tx / len) * off * side
-      if (distanceToPaths({ x, z }) < 0.72) continue
+      if (distanceToPaths({ x, z }) < 0.72 || distanceToBenches(x, z) < 1) continue
       if (!clearOfBuildings(x, z, 0.2, 0.6) || !clearOfPlaza(x, z, 0.3)) continue
       stones.push({ x, z, scale: 0.6 + rand() * 0.6, rot: rand() * Math.PI })
     }
@@ -156,7 +167,8 @@ function build() {
     const r = 4 + rand() * 28
     const x = Math.cos(angle) * r
     const z = Math.sin(angle) * r
-    if (distanceToPaths({ x, z }) < 1 || !clearOfBuildings(x, z, 0.3) || !clearOfPlaza(x, z, 0.4)) continue
+    if (distanceToPaths({ x, z }) < 1 || distanceToBenches(x, z) < 1) continue
+    if (!clearOfBuildings(x, z, 0.3) || !clearOfPlaza(x, z, 0.4)) continue
     stones.push({ x, z, scale: 0.5 + rand() * 1.1, rot: rand() * Math.PI })
   }
 
@@ -175,14 +187,6 @@ function build() {
     })
   }
 
-  // Benches sit on the plaza rim, in the gaps between path branches, facing the centre.
-  const benches: PropSpot[] = [-155, 35, 145].map((deg) => {
-    const a = (deg * Math.PI) / 180
-    const x = WORLD_HUB.x + Math.cos(a) * 2.75
-    const z = WORLD_HUB.z + Math.sin(a) * 2.75
-    return { x, z, rot: Math.atan2(WORLD_HUB.x - x, WORLD_HUB.z - z) }
-  })
-
   const lamps: PropSpot[] = []
   for (const b of getPathBranches()) {
     const pts = b.render
@@ -196,13 +200,13 @@ function build() {
       const x = p.x + (-tz / len) * 0.95 * side
       const z = p.z + (tx / len) * 0.95 * side
       if (distanceToPaths({ x, z }) < 0.8) continue
-      if (lamps.some((l) => Math.hypot(l.x - x, l.z - z) < 3)) continue
+      if (lamps.some((l) => Math.hypot(l.x - x, l.z - z) < 3) || distanceToBenches(x, z) < 1.4) continue
       if (!clearOfBuildings(x, z, 0.3, 0.8)) continue
       lamps.push({ x, z, rot: 0 })
     }
   }
 
-  return { trees, stones, patches, tufts, flowers, hills, benches, lamps }
+  return { trees, stones, patches, tufts, flowers, hills, lamps }
 }
 
 let scenery: ReturnType<typeof build> | null = null

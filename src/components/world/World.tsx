@@ -2,44 +2,58 @@ import { Canvas } from '@react-three/fiber'
 import { Suspense } from 'react'
 import { projects } from '../../data/projects'
 import { Character } from '../character/Character'
-import { ProjectCluster3D } from '../projects/ProjectCluster3D'
 import { ContactSign } from './ContactSign'
 import { WorldCameraRig } from './WorldCameraRig'
 import { WorldEnvironment } from './WorldEnvironment'
 import { WorldGround } from './WorldGround'
-import { DesignFragments } from './DesignFragments'
 import { WorldProximity } from './WorldProximity'
 import { AboutSign } from './AboutSign'
-import { NavigationDebugMarker } from './NavigationDebugMarker'
 import { characterSpawn } from '../../data/world3d'
+import { WorldJourneyBridge } from './WorldJourneyBridge'
+import { WorldKeyboardControls } from './WorldKeyboardControls'
+import { WorldMapControls } from './WorldMapControls'
+import { WorldTerrain } from './environment/WorldTerrain'
+import { WorldPaths } from './environment/WorldPaths'
+import { WorldScenery } from './environment/WorldScenery'
+import { ProjectLocation } from './buildings/ProjectLocation'
+import { useWorldState } from '../../context/WorldStateContext'
 
 type WorldProps = {
   onSelectProject: (slug: string) => void
-  onArrivedAtProject?: (slug: string) => void
+  dimmed?: boolean
 }
 
-function WorldScene({ onSelectProject, onArrivedAtProject }: WorldProps) {
+function WorldScene({ onSelectProject }: WorldProps) {
+  const { journeyPhase } = useWorldState()
+  const hideCharacter = journeyPhase === 'inRoom' || journeyPhase === 'exiting'
+
   return (
     <>
       <WorldEnvironment />
       <WorldGround />
+      <WorldTerrain />
+      <WorldPaths />
+      <WorldScenery />
       <WorldCameraRig />
+      <WorldMapControls />
+      <WorldJourneyBridge />
+      <WorldKeyboardControls />
       <WorldProximity />
-      <NavigationDebugMarker />
-      <Character onArrivedAtProject={onArrivedAtProject} />
+      {!hideCharacter && <Character />}
       <AboutSign />
       <ContactSign />
-      <DesignFragments />
       {projects.map((p) => (
-        <ProjectCluster3D key={p.slug} project={p} onSelect={onSelectProject} />
+        <ProjectLocation key={p.slug} project={p} onSelect={onSelectProject} />
       ))}
     </>
   )
 }
 
-export function World({ onSelectProject, onArrivedAtProject }: WorldProps) {
+export function World({ onSelectProject, dimmed }: WorldProps) {
   return (
-    <div className="fixed inset-0 z-0 bg-canvas">
+    <div
+      className={`fixed inset-0 z-0 bg-canvas transition-opacity duration-500 ${dimmed ? 'pointer-events-none opacity-0' : 'opacity-100'}`}
+    >
       <div
         className="pointer-events-none absolute inset-0 z-10 opacity-[0.04] mix-blend-multiply"
         aria-hidden
@@ -51,15 +65,15 @@ export function World({ onSelectProject, onArrivedAtProject }: WorldProps) {
         shadows
         dpr={[1, 1.75]}
         camera={{
-          position: [characterSpawn.x, 2.35, characterSpawn.z + 5.8],
+          position: [characterSpawn.x, 7.4, characterSpawn.z + 11],
           fov: 38,
           near: 0.1,
-          far: 70,
+          far: 140,
         }}
         gl={{ antialias: true, alpha: false }}
       >
         <Suspense fallback={null}>
-          <WorldScene onSelectProject={onSelectProject} onArrivedAtProject={onArrivedAtProject} />
+          <WorldScene onSelectProject={onSelectProject} />
         </Suspense>
       </Canvas>
     </div>

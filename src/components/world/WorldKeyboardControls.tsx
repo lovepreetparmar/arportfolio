@@ -1,0 +1,50 @@
+import { useFrame, useThree } from '@react-three/fiber'
+import { useRef } from 'react'
+import * as THREE from 'three'
+import { useWorldState } from '../../context/WorldStateContext'
+import { useCharacterKeyboard } from '../character/useCharacterKeyboard'
+
+const FORWARD = ['w', 'arrowup']
+const BACK = ['s', 'arrowdown']
+const LEFT = ['a', 'arrowleft']
+const RIGHT = ['d', 'arrowright']
+const STEP_AHEAD = 0.9
+
+const forward = new THREE.Vector3()
+const right = new THREE.Vector3()
+const up = new THREE.Vector3(0, 1, 0)
+
+/** WASD / arrow keys steer the character relative to the camera while exploring the world. */
+export function WorldKeyboardControls() {
+  const keys = useCharacterKeyboard()
+  const { camera } = useThree()
+  const { character, setTarget, journeyPhase } = useWorldState()
+  const steering = useRef(false)
+
+  useFrame(() => {
+    const pressed = keys.current
+    const any = (list: string[]) => list.some((k) => pressed.has(k))
+    const ix = (any(RIGHT) ? 1 : 0) - (any(LEFT) ? 1 : 0)
+    const iz = (any(FORWARD) ? 1 : 0) - (any(BACK) ? 1 : 0)
+
+    if (journeyPhase !== 'world' || (ix === 0 && iz === 0)) {
+      if (steering.current) {
+        steering.current = false
+        setTarget({ x: character.x, y: 0, z: character.z })
+      }
+      return
+    }
+
+    camera.getWorldDirection(forward)
+    forward.y = 0
+    forward.normalize()
+    right.crossVectors(forward, up).normalize()
+    const dx = forward.x * iz + right.x * ix
+    const dz = forward.z * iz + right.z * ix
+    const len = Math.hypot(dx, dz) || 1
+    steering.current = true
+    setTarget({ x: character.x + (dx / len) * STEP_AHEAD, y: 0, z: character.z + (dz / len) * STEP_AHEAD })
+  })
+
+  return null
+}

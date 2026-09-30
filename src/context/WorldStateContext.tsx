@@ -1,14 +1,30 @@
-import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react'
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useMemo,
+  useRef,
+  useState,
+  type MutableRefObject,
+  type ReactNode,
+} from 'react'
 import { characterSpawn } from '../data/world3d'
-import { OPENING_FOCUS_SLUG } from '../data/worldLayout'
-import type { CharacterState } from '../components/character/CharacterAnimations'
-import { getCharacterDestination, getProjectWorldPosition, logNavigationStep } from '../navigation/worldNavigation'
 import { getProjectBySlug } from '../data/projects'
+import { getProjectEntrance, hasProjectInteriorRoom } from '../data/projectWorld'
+import { planRoute } from '../data/worldPaths'
+import type { CharacterState } from '../components/character/CharacterAnimations'
+import { useReducedMotion } from '../hooks/useMediaQuery'
 
 export type Vec3 = { x: number; y: number; z: number }
 
-export type NavigationMode = 'free' | 'navigating' | 'inspecting'
-export type NavigationSource = 'manual' | 'index' | 'project' | 'click' | null
+export type JourneyPhase =
+  | 'world'
+  | 'walking'
+  | 'arrived'
+  | 'doorOpening'
+  | 'entering'
+  | 'inRoom'
+  | 'exiting'
 
 type SavedWorld = {
   character: Vec3
@@ -19,11 +35,7 @@ type SavedWorld = {
 type WorldStateContextValue = {
   character: Vec3
   target: Vec3
-  characterRef: React.MutableRefObject<Vec3>
-  targetRef: React.MutableRefObject<Vec3>
-  setNavigationTarget: (t: Vec3, source?: NavigationSource) => void
-  navigateToProject: (slug: string, source?: NavigationSource) => void
-  cancelNavigation: () => void
+  setTarget: (t: Vec3) => void
   updateCharacter: (c: Vec3) => void
   moving: boolean
   setMoving: (v: boolean) => void
@@ -42,130 +54,75 @@ type WorldStateContextValue = {
   setLookAt: (p: Vec3 | null) => void
   characterState: CharacterState
   setCharacterState: (s: CharacterState) => void
-  navigationMode: NavigationMode
-  navigationSource: NavigationSource
+  journeyPhase: JourneyPhase
   pendingProjectSlug: string | null
-  clearPendingProject: () => void
-  destinationMarker: Vec3 | null
-  /** @deprecated use setNavigationTarget */
-  setTarget: (t: Vec3, source?: NavigationSource) => void
+  roomProjectSlug: string | null
+  legacyProjectSlug: string | null
+  doorOpenAmount: number
+  setDoorOpenAmount: (n: number) => void
+  cameraFocus: Vec3 | null
+  navigateToProject: (slug: string) => void
+  onCharacterArrivedAtEntrance: () => void
+  advanceJourneyTo: (phase: JourneyPhase) => void
+  beginProjectReveal: () => void
+  openLegacyProjectView: (slug: string) => void
+  clearLegacyProjectView: () => void
+  exitProjectRoom: () => void
+  characterRef: MutableRefObject<Vec3>
+  targetRef: MutableRefObject<Vec3>
+  /** Remaining path waypoints after the current target. */
+  routeRef: MutableRefObject<Vec3[]>
+  advanceRoute: () => boolean
 }
 
 const STORAGE_KEY = 'anushri-world-state'
 const WorldStateContext = createContext<WorldStateContextValue | null>(null)
 
-function assignVec3(dst: Vec3, src: Vec3) {
-  dst.x = src.x
-  dst.y = src.y ?? 0
-  dst.z = src.z
-}
-
 export function WorldStateProvider({ children }: { children: ReactNode }) {
-  const [character, setCharacter] = useState<Vec3>({ ...characterSpawn, y: 0 })
-  const [target, setTargetState] = useState<Vec3>({ ...characterSpawn, y: 0 })
+  const reduced = useReducedMotion()
+  const [character, setCharacter] = useState<Vec3>(characterSpawn)
+  const [target, setTargetState] = useState<Vec3>(characterSpawn)
   const [moving, setMoving] = useState(false)
   const [pointer, setPointer] = useState({ x: 0, y: 0 })
   const [activeTerritory, setActiveTerritory] = useState('experiments')
-  const [nearProjectSlug, setNearProjectSlug] = useState<string | null>(OPENING_FOCUS_SLUG)
+  const [nearProjectSlug, setNearProjectSlug] = useState<string | null>(null)
   const [accentColor, setAccentColor] = useState('#f77f00')
   const [lookAt, setLookAt] = useState<Vec3 | null>(null)
   const [characterState, setCharacterState] = useState<CharacterState>('idle')
-  const [navigationMode, setNavigationMode] = useState<NavigationMode>('free')
-  const [navigationSource, setNavigationSource] = useState<NavigationSource>(null)
+  const [journeyPhase, setJourneyPhase] = useState<JourneyPhase>('world')
   const [pendingProjectSlug, setPendingProjectSlug] = useState<string | null>(null)
-  const [destinationMarker, setDestinationMarker] = useState<Vec3 | null>(null)
+  const [roomProjectSlug, setRoomProjectSlug] = useState<string | null>(null)
+  const [legacyProjectSlug, setLegacyProjectSlug] = useState<string | null>(null)
+  const [doorOpenAmount, setDoorOpenAmount] = useState(0)
+  const [cameraFocus, setCameraFocus] = useState<Vec3 | null>(null)
+  const characterRef = useRef(character)
+  const targetRef = useRef(target)
+  const routeRef = useRef<Vec3[]>([])
+  characterRef.current = character
+  targetRef.current = target
 
-  const characterRef = useRef<Vec3>({ x: characterSpawn.x, y: 0, z: characterSpawn.z })
-  const targetRef = useRef<Vec3>({ x: characterSpawn.x, y: 0, z: characterSpawn.z })
-
-  const publishTarget = useCallback((t: Vec3) => {
-    assignVec3(targetRef.current, t)
-    setTargetState({ ...targetRef.current })
-    setDestinationMarker({ ...targetRef.current })
+  const setTarget = useCallback((t: Vec3) => {
+    routeRef.current = []
+    setTargetState(t)
+    setMoving(true)
+    setLookAt(null)
   }, [])
 
-  const syncCharacter = useCallback((c: Vec3) => {
-    assignVec3(characterRef.current, c)
-    setCharacter({ ...characterRef.current })
+  const advanceRoute = useCallback(() => {
+    const next = routeRef.current.shift()
+    if (!next) return false
+    setTargetState(next)
+    return true
   }, [])
 
-  const setNavigationTarget = useCallback(
-    (t: Vec3, source: NavigationSource = 'manual') => {
-      publishTarget({ x: t.x, y: 0, z: t.z })
-      setMoving(true)
-      setLookAt(null)
-      setNavigationMode('navigating')
-      setNavigationSource(source)
-      if (source !== 'index' && source !== 'project') {
-        setPendingProjectSlug(null)
-      }
-      logNavigationStep('setNavigationTarget', {
-        source,
-        target: { ...targetRef.current },
-        character: { ...characterRef.current },
-      })
-    },
-    [publishTarget],
-  )
-
-  const navigateToProject = useCallback(
-    (slug: string, source: NavigationSource = 'index') => {
-      const project = getProjectBySlug(slug)
-      if (!project) return
-      const from = { ...characterRef.current }
-      const center = getProjectWorldPosition(project)
-      const dest = getCharacterDestination(project, from)
-
-      publishTarget(dest)
-      setMoving(true)
-      setLookAt(null)
-      setNavigationMode('navigating')
-      setNavigationSource(source)
-      setPendingProjectSlug(slug)
-
-      const distance = Math.hypot(dest.x - from.x, dest.z - from.z)
-      if (import.meta.env.DEV) {
-        console.log(`SELECTED PROJECT: ${project.title}`)
-        console.log('PROJECT WORLD POSITION:', { x: center.x, y: center.y, z: center.z })
-        console.log('CHARACTER CURRENT POSITION:', { x: from.x, y: from.y, z: from.z })
-        console.log('CHARACTER TARGET:', {
-          x: targetRef.current.x,
-          y: targetRef.current.y,
-          z: targetRef.current.z,
-        })
-        console.log('DISTANCE TO TARGET:', distance.toFixed(2))
-        console.log('NAVIGATION STATE: navigating')
-      }
-      logNavigationStep('SELECTED PROJECT', {
-        title: project.title,
-        slug,
-        projectWorld: center,
-        character: from,
-        characterTarget: { ...targetRef.current },
-        distance,
-        navigationState: 'navigating',
-      })
-    },
-    [publishTarget],
-  )
-
-  const cancelNavigation = useCallback(() => {
-    setNavigationMode('free')
-    setNavigationSource(null)
-    setPendingProjectSlug(null)
-    setDestinationMarker(null)
-  }, [])
-
-  const clearPendingProject = useCallback(() => {
-    setPendingProjectSlug(null)
-    setNavigationMode('inspecting')
-    setNavigationSource(null)
+  const updateCharacter = useCallback((c: Vec3) => {
+    setCharacter(c)
   }, [])
 
   const saveWorld = useCallback(() => {
     const payload: SavedWorld = {
-      character: { ...characterRef.current },
-      target: { ...targetRef.current },
+      character: characterRef.current,
+      target: targetRef.current,
       at: Date.now(),
     }
     sessionStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
@@ -176,10 +133,8 @@ export function WorldStateProvider({ children }: { children: ReactNode }) {
     if (!raw) return null
     try {
       const data = JSON.parse(raw) as SavedWorld
-      assignVec3(characterRef.current, data.character)
-      assignVec3(targetRef.current, data.target)
-      setCharacter({ ...characterRef.current })
-      setTargetState({ ...targetRef.current })
+      setCharacter(data.character)
+      setTargetState(data.target)
       return data
     } catch {
       return null
@@ -190,17 +145,110 @@ export function WorldStateProvider({ children }: { children: ReactNode }) {
     sessionStorage.removeItem(STORAGE_KEY)
   }, [])
 
+  const advanceJourneyTo = useCallback((phase: JourneyPhase) => {
+    setJourneyPhase(phase)
+  }, [])
+
+  const navigateToProject = useCallback(
+    (slug: string) => {
+      const project = getProjectBySlug(slug)
+      if (!project) return
+      saveWorld()
+      setPendingProjectSlug(slug)
+      setLegacyProjectSlug(null)
+      setRoomProjectSlug(null)
+      setDoorOpenAmount(0)
+
+      const entrance = getProjectEntrance(project)
+      setCameraFocus({ x: entrance.buildingX, y: 1.2, z: entrance.buildingZ })
+      setLookAt({ x: entrance.buildingX, y: 1.1, z: entrance.buildingZ })
+
+      if (reduced) {
+        if (hasProjectInteriorRoom(slug)) {
+          setJourneyPhase('inRoom')
+          setRoomProjectSlug(slug)
+          setPendingProjectSlug(null)
+          setCameraFocus(null)
+        } else {
+          setJourneyPhase('world')
+          setLegacyProjectSlug(slug)
+          setPendingProjectSlug(null)
+          setCameraFocus(null)
+        }
+        return
+      }
+
+      setJourneyPhase('walking')
+      const route = planRoute(characterRef.current, slug)
+      const first = route.shift() ?? { x: entrance.x, y: 0, z: entrance.z }
+      routeRef.current = route
+      setTargetState(first)
+      setMoving(true)
+    },
+    [reduced, saveWorld],
+  )
+
+  const onCharacterArrivedAtEntrance = useCallback(() => {
+    setJourneyPhase((phase) => {
+      if (phase !== 'walking') return phase
+      return 'arrived'
+    })
+    setMoving(false)
+  }, [])
+
+  const beginProjectReveal = useCallback(() => {
+    const slug = pendingProjectSlug
+    if (!slug) return
+    if (hasProjectInteriorRoom(slug)) {
+      setRoomProjectSlug(slug)
+      setJourneyPhase('inRoom')
+    } else {
+      setLegacyProjectSlug(slug)
+      setJourneyPhase('world')
+      setDoorOpenAmount(0)
+      setCameraFocus(null)
+    }
+    setPendingProjectSlug(null)
+  }, [pendingProjectSlug])
+
+  const openLegacyProjectView = useCallback((slug: string) => {
+    setLegacyProjectSlug(slug)
+    setPendingProjectSlug(null)
+    setJourneyPhase('world')
+    setDoorOpenAmount(0)
+    setCameraFocus(null)
+  }, [])
+
+  const clearLegacyProjectView = useCallback(() => {
+    setLegacyProjectSlug(null)
+    restoreWorld()
+    clearSavedWorld()
+    setJourneyPhase('world')
+    setDoorOpenAmount(0)
+    setCameraFocus(null)
+    setPendingProjectSlug(null)
+    setRoomProjectSlug(null)
+  }, [restoreWorld, clearSavedWorld])
+
+  const exitProjectRoom = useCallback(() => {
+    setJourneyPhase('exiting')
+    setDoorOpenAmount(0)
+    window.setTimeout(() => {
+      setRoomProjectSlug(null)
+      setJourneyPhase('world')
+      setCameraFocus(null)
+      restoreWorld()
+      clearSavedWorld()
+      setPendingProjectSlug(null)
+    }, reduced ? 120 : 700)
+  }, [restoreWorld, clearSavedWorld, reduced])
+
   const value = useMemo(
     () => ({
       character,
       target,
-      characterRef,
-      targetRef,
-      setNavigationTarget,
-      setTarget: setNavigationTarget,
-      navigateToProject,
-      cancelNavigation,
-      updateCharacter: syncCharacter,
+      setTarget,
+      updateCharacter,
       moving,
       setMoving,
       pointer,
@@ -218,19 +266,30 @@ export function WorldStateProvider({ children }: { children: ReactNode }) {
       setLookAt,
       characterState,
       setCharacterState,
-      navigationMode,
-      navigationSource,
+      journeyPhase,
       pendingProjectSlug,
-      clearPendingProject,
-      destinationMarker,
+      roomProjectSlug,
+      legacyProjectSlug,
+      doorOpenAmount,
+      setDoorOpenAmount,
+      cameraFocus,
+      navigateToProject,
+      onCharacterArrivedAtEntrance,
+      advanceJourneyTo,
+      beginProjectReveal,
+      openLegacyProjectView,
+      clearLegacyProjectView,
+      exitProjectRoom,
+      characterRef,
+      targetRef,
+      routeRef,
+      advanceRoute,
     }),
     [
       character,
       target,
-      setNavigationTarget,
-      navigateToProject,
-      cancelNavigation,
-      syncCharacter,
+      setTarget,
+      updateCharacter,
       moving,
       pointer,
       saveWorld,
@@ -241,11 +300,20 @@ export function WorldStateProvider({ children }: { children: ReactNode }) {
       accentColor,
       lookAt,
       characterState,
-      navigationMode,
-      navigationSource,
+      journeyPhase,
       pendingProjectSlug,
-      clearPendingProject,
-      destinationMarker,
+      roomProjectSlug,
+      legacyProjectSlug,
+      doorOpenAmount,
+      cameraFocus,
+      navigateToProject,
+      onCharacterArrivedAtEntrance,
+      advanceJourneyTo,
+      beginProjectReveal,
+      openLegacyProjectView,
+      clearLegacyProjectView,
+      exitProjectRoom,
+      advanceRoute,
     ],
   )
 

@@ -1,5 +1,5 @@
 import { useFrame } from '@react-three/fiber'
-import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, type RefObject } from 'react'
 import * as THREE from 'three'
 import { findAnimationAction, logCharacterAnimationsOnce } from './animationResolver'
 import { ANIM } from './characterConfig'
@@ -13,11 +13,19 @@ type CharacterAnimatorProps = {
   walkSpeed: number
   onReady: (ready: boolean) => void
   onDebug?: (info: { playing: string; available: string[] }) => void
-  /** Local offset after scale — re-applied each frame so clips cannot translate the root mesh. */
-  modelGroundLocal?: THREE.Vector3
+  modelGroundLocal?: RefObject<THREE.Vector3>
 }
 
 const BASE_WALK_SPEED = 1.0
+
+function restoreBindPose(model: THREE.Object3D) {
+  model.traverse((child) => {
+    const skinned = child as THREE.SkinnedMesh
+    if (skinned.isSkinnedMesh && skinned.skeleton) {
+      skinned.skeleton.pose()
+    }
+  })
+}
 
 export function useCharacterAnimator({
   model,
@@ -52,41 +60,46 @@ export function useCharacterAnimator({
       console.log('[Character] Skinned meshes:', skinned)
     }
 
-    const idle = findAnimationAction(actions.current, [...ANIM.idle])
-    if (idle) {
-      idle.setLoop(THREE.LoopRepeat, Infinity)
-      idle.reset().fadeIn(0.3).play()
-      current.current = idle
-      onReady(true)
-    } else {
-      onReady(false)
-    }
+    mixer.stopAllAction()
+    restoreBindPose(model)
+    const walk = findAnimationAction(actions.current, [...ANIM.walk])
+    onReady(!!walk || clips.some((c) => c.name === 'Idle'))
   }, [clips, mixer, model, onReady])
 
   useEffect(() => {
-    const idle = findAnimationAction(actions.current, [...ANIM.idle])
     const walk = findAnimationAction(actions.current, [...ANIM.walk])
     const inspect = findAnimationAction(actions.current, [...ANIM.inspect])
 
     let next: THREE.AnimationAction | null = null
-    if (animState === 'walk' && walk) next = walk
-    else if (animState === 'inspect' && inspect) next = inspect
-    else next = idle
+    if (animState === 'walk' && walk) {
+      next = walk
+    } else if (animState === 'inspect' && inspect) {
+      next = inspect
+    }
 
-    if (!next || next === current.current) {
-      if (next && animState === 'walk') {
-        next.timeScale = THREE.MathUtils.clamp(walkSpeed / BASE_WALK_SPEED, 0.85, 1.25)
+    if (animState === 'walk' && !walk && import.meta.env.DEV) {
+      console.warn('[Character] Walk requested but no Walk clip is loaded')
+    }
+
+    if (!next) {
+      if (current.current) {
+        current.current.fadeOut(0.2)
+        current.current = null
       }
-      const playing = current.current?.getClip().name ?? 'none'
-      if (onDebug && playing !== lastDebugPlaying.current) {
-        lastDebugPlaying.current = playing
-        onDebug({ playing, available: Object.keys(actions.current) })
+      mixer.stopAllAction()
+      restoreBindPose(model)
+      return
+    }
+
+    if (next === current.current) {
+      if (animState === 'walk') {
+        next.timeScale = THREE.MathUtils.clamp(walkSpeed / BASE_WALK_SPEED, 0.85, 1.25)
       }
       return
     }
 
-    current.current?.fadeOut(0.25)
-    next.reset().fadeIn(0.25).play()
+    current.current?.fadeOut(0.2)
+    next.reset().fadeIn(0.2).play()
     if (animState === 'walk') {
       next.setLoop(THREE.LoopRepeat, Infinity)
       next.timeScale = THREE.MathUtils.clamp(walkSpeed / BASE_WALK_SPEED, 0.85, 1.25)
@@ -99,14 +112,17 @@ export function useCharacterAnimator({
     const playing = next.getClip().name
     lastDebugPlaying.current = playing
     onDebug?.({ playing, available: Object.keys(actions.current) })
-  }, [animState, walkSpeed, onDebug])
+  }, [animState, walkSpeed, onDebug, mixer, model])
 
   useFrame((_, delta) => {
-    mixer.update(delta)
-    if (modelGroundLocal) {
-      model.position.copy(modelGroundLocal)
+    if (current.current) {
+      mixer.update(delta)
     }
-  })
+    const ground = modelGroundLocal?.current
+    if (ground) {
+      model.position.copy(ground)
+    }
+  }, 0)
 
   return { mixer, hasClips: clips.length > 0 }
 }

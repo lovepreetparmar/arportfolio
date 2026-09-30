@@ -2,39 +2,28 @@ import { useFrame } from '@react-three/fiber'
 import { useRef } from 'react'
 import * as THREE from 'three'
 import { contactWorld } from '../../data/world3d'
-import { getProjectBySlug } from '../../data/projects'
-import { getProjectWorldPosition, logNavigationStep, ARRIVAL_THRESHOLD } from '../../navigation/worldNavigation'
 import { OPENING_FOCUS_SLUG, REVEAL } from '../../data/worldLayout'
 import { useWorldState } from '../../context/WorldStateContext'
 import { useReducedMotion } from '../../hooks/useMediaQuery'
-import type { AnimPlaybackState } from './CharacterAnimator'
-import { applyLookAt, createLookState } from './CharacterLookAt'
-import { nextCharacterState } from './CharacterStateMachine'
-import { applyKeyboardTarget, stepCharacterMovement } from './CharacterMovement'
-import type { CharacterRigRefs } from './characterControllerTypes'
+import {
+  WALK_SPEED,
+  damp,
+  dampAngle,
+  initBlinkState,
+  resolveCharacterState,
+  updateBlink,
+  walkPhaseAdvance,
+  type BlinkState,
+  type CharacterState,
+} from './CharacterAnimations'
+import type { CharacterRigRefs } from './useCharacterRefs'
 
 const POINT_SLUGS = new Set([OPENING_FOCUS_SLUG, 'brand-identity'])
 
-type CharacterControllerProps = {
-  group: React.RefObject<THREE.Group | null>
-  bones: CharacterRigRefs
-  keys: React.RefObject<Set<string>>
-  allowBoneLookAt: boolean
-  onAnimState: (state: AnimPlaybackState) => void
-  onArrivedAtProject?: (slug: string) => void
-}
-
-export function CharacterController({
-  group,
-  bones,
-  keys,
-  allowBoneLookAt,
-  onAnimState,
-  onArrivedAtProject,
-}: CharacterControllerProps) {
+export function CharacterController({ refs }: { refs: CharacterRigRefs }) {
   const {
-    characterRef,
-    targetRef,
+    character,
+    target,
     pointer,
     updateCharacter,
     setMoving,
@@ -42,126 +31,144 @@ export function CharacterController({
     activeTerritory,
     nearProjectSlug,
     setCharacterState,
-    setNavigationTarget,
-    cancelNavigation,
-    pendingProjectSlug,
-    navigationMode,
-    setLookAt: setLookAtTarget,
-    clearPendingProject,
   } = useWorldState()
   const reduced = useReducedMotion()
+  const walkPhase = useRef(0)
+  const idlePhase = useRef(Math.random() * 10)
   const bodyYaw = useRef(0)
-  const lookState = useRef(createLookState())
-  const stateRef = useRef<import('./CharacterAnimations').CharacterState>('idle')
-  const animRef = useRef<AnimPlaybackState>('idle')
-  const lastKbTarget = useRef<{ x: number; z: number } | null>(null)
-  const arrivedRef = useRef(false)
-  const logFrame = useRef(0)
-  const uiSync = useRef(0)
+  const blink = useRef<BlinkState | null>(null)
+  const stateRef = useRef<CharacterState>('idle')
+  const headLook = useRef({ x: 0, y: 0 })
+  const eyeLook = useRef({ x: 0, y: 0 })
 
-  useFrame((_, delta) => {
-    if (!group.current) return
+  useFrame((state, delta) => {
+    if (!refs.root.current || !refs.hips.current || !refs.chest.current) return
+    if (!blink.current) blink.current = initBlinkState(state.clock.elapsedTime)
 
-    const pos = characterRef.current
-    const navTarget = targetRef.current
+    const dx = target.x - character.x
+    const dz = target.z - character.z
+    const dist = Math.hypot(dx, dz)
+    const isWalking = dist > 0.055
 
-    const kbTarget = applyKeyboardTarget(keys.current, pos, bodyYaw.current)
-    if (kbTarget) {
-      cancelNavigation()
-      const prev = lastKbTarget.current
-      if (!prev || Math.hypot(prev.x - kbTarget.x, prev.z - kbTarget.z) > 0.08) {
-        lastKbTarget.current = { x: kbTarget.x, z: kbTarget.z }
-        setNavigationTarget(kbTarget, 'manual')
-      }
+    if (isWalking) {
+      const step = Math.min(dist, WALK_SPEED * delta)
+      updateCharacter({ x: character.x + (dx / dist) * step, y: 0, z: character.z + (dz / dist) * step })
+      walkPhase.current = walkPhaseAdvance(walkPhase.current, delta)
+      setMoving(true)
     } else {
-      lastKbTarget.current = null
+      setMoving(false)
     }
 
-    const movement = stepCharacterMovement(pos, navTarget, bodyYaw.current, delta)
-    pos.x = movement.position.x
-    pos.y = 0
-    pos.z = movement.position.z
+    refs.root.current.position.set(character.x, 0, character.z)
 
-    bodyYaw.current = movement.bodyYaw
-    group.current.position.set(pos.x, 0, pos.z)
-    group.current.rotation.y = bodyYaw.current
-
-    uiSync.current += 1
-    if (uiSync.current % 4 === 0 || !movement.isWalking) {
-      updateCharacter({ x: pos.x, y: 0, z: pos.z })
-    }
-
-    setMoving(movement.isWalking)
-
-    logFrame.current += 1
-    if (import.meta.env.DEV && logFrame.current % 45 === 0 && movement.isWalking) {
-      logNavigationStep('Character position', {
-        x: pos.x.toFixed(2),
-        y: pos.y,
-        z: pos.z.toFixed(2),
-        target: { x: navTarget.x.toFixed(2), z: navTarget.z.toFixed(2) },
-        distance: movement.distance.toFixed(2),
-        state: movement.isWalking ? 'WALKING' : 'IDLE',
-      })
-    }
-
-    const distToTarget = movement.distance
-
-    if (
-      pendingProjectSlug &&
-      navigationMode === 'navigating' &&
-      distToTarget <= ARRIVAL_THRESHOLD &&
-      !arrivedRef.current
-    ) {
-      arrivedRef.current = true
-      const arrivedSlug = pendingProjectSlug
-      const project = getProjectBySlug(arrivedSlug)
-      if (project) {
-        const center = getProjectWorldPosition(project)
-        setLookAtTarget({ x: center.x, y: 1.15, z: center.z })
-      }
-      navTarget.x = pos.x
-      navTarget.z = pos.z
-      onArrivedAtProject?.(arrivedSlug)
-      clearPendingProject()
-      window.setTimeout(() => {
-        arrivedRef.current = false
-      }, 1200)
-    }
-
-    if (movement.isWalking) {
-      arrivedRef.current = false
-    }
-
-    const nearContact = Math.hypot(pos.x - contactWorld.x, pos.z - contactWorld.z) < 10
+    const nearContact = Math.hypot(character.x - contactWorld.x, character.z - contactWorld.z) < 10
     const nearProject =
       !!nearProjectSlug &&
       !!lookAt &&
-      Math.hypot(pos.x - lookAt.x, pos.z - lookAt.z) < REVEAL.interact + 1.5
+      Math.hypot(character.x - lookAt.x, character.z - lookAt.z) < REVEAL.interact + 1.5
 
-    const nextState = nextCharacterState({
-      isWalking: movement.isWalking,
+    const nextState = resolveCharacterState(
+      isWalking,
       nearProject,
+      activeTerritory,
       nearContact,
-      territory: activeTerritory,
-      pointMoment: !!nearProjectSlug && POINT_SLUGS.has(nearProjectSlug),
-    })
+      !!nearProjectSlug && POINT_SLUGS.has(nearProjectSlug),
+    )
     if (nextState !== stateRef.current) {
       stateRef.current = nextState
       setCharacterState(nextState)
     }
 
-    let anim: AnimPlaybackState = 'idle'
-    if (movement.isWalking) anim = 'walk'
-    else if (nearProject && navigationMode !== 'navigating') anim = 'inspect'
-    if (anim !== animRef.current) {
-      animRef.current = anim
-      onAnimState(anim)
+    let targetYaw = bodyYaw.current
+    if (isWalking) {
+      targetYaw = Math.atan2(dx, dz)
+    } else if (lookAt && nearProject) {
+      targetYaw = Math.atan2(lookAt.x - character.x, lookAt.z - character.z)
+    }
+    bodyYaw.current = dampAngle(bodyYaw.current, targetYaw, isWalking ? 9 : 5, delta)
+    refs.hips.current.rotation.y = bodyYaw.current
+
+    const t = state.clock.elapsedTime + idlePhase.current
+    const breathe = Math.sin(t * 1.05) * 0.014
+    const sway = Math.sin(t * 0.55) * 0.012
+    refs.chest.current.position.y = 0.38 + breathe
+    refs.chest.current.rotation.z = sway * 0.35
+    refs.spine.current!.rotation.x = breathe * 0.35
+
+    const swing = Math.sin(walkPhase.current) * 0.55
+    const bounce = isWalking ? Math.abs(Math.sin(walkPhase.current)) * 0.045 : 0
+    refs.hips.current.position.y = 0.82 + bounce
+
+    if (refs.leftLeg.current) refs.leftLeg.current.rotation.x = isWalking ? swing : damp(refs.leftLeg.current.rotation.x, 0, 8, delta)
+    if (refs.rightLeg.current) refs.rightLeg.current.rotation.x = isWalking ? -swing : damp(refs.rightLeg.current.rotation.x, 0, 8, delta)
+    if (refs.leftArm.current) refs.leftArm.current.rotation.x = isWalking ? -swing * 0.55 : 0
+    if (refs.rightArm.current) refs.rightArm.current.rotation.x = isWalking ? swing * 0.55 : 0
+
+    if (stateRef.current === 'pointing' && refs.rightArm.current) {
+      refs.rightArm.current.rotation.x = -0.85
+      refs.rightArm.current.rotation.z = 0.15
+    }
+    if (stateRef.current === 'reading' && refs.head.current) {
+      refs.head.current.rotation.x = damp(refs.head.current.rotation.x, 0.22, 6, delta)
+    }
+    if (stateRef.current === 'inspecting' && refs.head.current) {
+      refs.head.current.rotation.z = damp(refs.head.current.rotation.z, 0.08, 5, delta)
     }
 
-    if (allowBoneLookAt && !movement.isWalking && nearProject && lookAt) {
-      const charPos = new THREE.Vector3(pos.x, 0, pos.z)
-      applyLookAt(bones, lookState.current, lookAt, bodyYaw.current, pointer, charPos, delta, reduced, true)
+    if (refs.head.current) {
+      let targetHeadY = 0
+      let targetHeadX = 0
+      if (lookAt && nearProject && !isWalking) {
+        const lx = lookAt.x - character.x
+        const lz = lookAt.z - character.z
+        targetHeadY = THREE.MathUtils.clamp(Math.atan2(lx, lz) - bodyYaw.current, -0.12, 0.12)
+        targetHeadX = 0.04
+      } else if (!reduced) {
+        targetHeadY = THREE.MathUtils.clamp(pointer.x * 0.1, -0.1, 0.1)
+        targetHeadX = THREE.MathUtils.clamp(-pointer.y * 0.06, -0.05, 0.05)
+      }
+      headLook.current.x = damp(headLook.current.x, targetHeadX, 8, delta)
+      headLook.current.y = damp(headLook.current.y, targetHeadY, 8, delta)
+      refs.head.current.rotation.y = headLook.current.y
+      refs.head.current.rotation.x = headLook.current.x
+    }
+
+    if (refs.eyes.current) {
+      const eyeScaleY = updateBlink(blink.current!, state.clock.elapsedTime)
+      refs.eyes.current.scale.y = THREE.MathUtils.lerp(refs.eyes.current.scale.y, eyeScaleY, 0.4)
+      if (!reduced && !nearProject) {
+        eyeLook.current.x = damp(eyeLook.current.x, pointer.x * 0.015, 10, delta)
+        eyeLook.current.y = damp(eyeLook.current.y, pointer.y * 0.01, 10, delta)
+        refs.eyes.current.position.x = eyeLook.current.x
+        refs.eyes.current.position.y = eyeLook.current.y
+      }
+    }
+
+    if (refs.hair.current) {
+      const lag = isWalking ? -0.04 : Math.sin(t * 0.85) * 0.015
+      const sideSway = isWalking ? Math.sin(walkPhase.current) * 0.03 : sway * 0.35
+      refs.hair.current.rotation.x = damp(refs.hair.current.rotation.x, lag, 6, delta)
+      refs.hair.current.rotation.z = damp(refs.hair.current.rotation.z, sideSway, 5, delta)
+    }
+    if (refs.hairBack.current) {
+      const backLag = isWalking ? 0.12 + Math.sin(walkPhase.current) * 0.04 : 0.01 + Math.sin(t * 0.7) * 0.012
+      refs.hairBack.current.rotation.x = damp(refs.hairBack.current.rotation.x, backLag, 5, delta)
+      refs.hairBack.current.rotation.z = damp(
+        refs.hairBack.current.rotation.z,
+        isWalking ? Math.sin(walkPhase.current) * 0.035 : 0,
+        4,
+        delta,
+      )
+    }
+    if (refs.blazer.current) {
+      refs.blazer.current.rotation.z = sway * 0.25
+    }
+
+    if (refs.shadow.current) {
+      const stretch = isWalking ? 1.18 : 1
+      refs.shadow.current.scale.set(stretch, stretch * 0.88, 1)
+      const sm = refs.shadow.current.material as THREE.MeshBasicMaterial
+      sm.opacity = isWalking ? 0.13 : 0.17
     }
   })
 

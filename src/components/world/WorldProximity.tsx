@@ -6,7 +6,7 @@ import { useWorldState } from '../../context/WorldStateContext'
 
 /** Single pass: nearest project drives territory, accent, and character look-at. */
 export function WorldProximity() {
-  const { characterRef, setActiveTerritory, setNearProjectSlug, setAccentColor, setLookAt } = useWorldState()
+  const { character, setActiveTerritory, setNearProjectSlug, setAccentColor, setLookAt } = useWorldState()
   const prev = useRef({ slug: '', territory: '', accent: '', lookKey: '' })
 
   useFrame(() => {
@@ -19,8 +19,7 @@ export function WorldProximity() {
     for (const project of projects) {
       const slot = getWorldSlot(project.slug)
       if (!slot) continue
-      const c = characterRef.current
-      const d = Math.hypot(c.x - slot.position.x, c.z - slot.position.z)
+      const d = Math.hypot(character.x - slot.position.x, character.z - slot.position.z)
       if (d < bestDist) {
         bestDist = d
         bestSlug = project.slug

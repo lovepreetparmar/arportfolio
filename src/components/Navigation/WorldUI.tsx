@@ -7,10 +7,13 @@ import { ABOUT_POSITION } from '../../data/worldLayout'
 
 type WorldUIProps = {
   onFlyToContact: () => void
+  /** Reduced-motion: optional direct open from index. */
+  onOpenProjectDirect?: (slug: string) => void
 }
 
-export function WorldUI({ onFlyToContact }: WorldUIProps) {
-  const { navigateToProject, setTarget } = useWorldState()
+export function WorldUI({ onFlyToContact, onOpenProjectDirect }: WorldUIProps) {
+  const { setTarget, navigateToProject, journeyPhase } = useWorldState()
+  const traveling = journeyPhase === 'walking' || journeyPhase === 'arrived' || journeyPhase === 'doorOpening'
   const [indexOpen, setIndexOpen] = useState(false)
 
   return (
@@ -22,7 +25,7 @@ export function WorldUI({ onFlyToContact }: WorldUIProps) {
             <button
               type="button"
               onClick={() => {
-                setTarget({ x: ABOUT_POSITION.x, y: 0, z: ABOUT_POSITION.z }, 'manual')
+                setTarget({ x: ABOUT_POSITION.x, y: 0, z: ABOUT_POSITION.z })
                 onFlyToContact()
               }}
             >
@@ -32,11 +35,13 @@ export function WorldUI({ onFlyToContact }: WorldUIProps) {
           </div>
         </div>
         <div className="flex items-end justify-between">
-          <p className="text-[10px] tracking-[0.3em] text-muted uppercase">Click to walk · WASD to move</p>
+          <p className="text-[10px] tracking-[0.3em] text-muted uppercase">
+            {traveling ? 'Walking to project…' : 'Select a location · Click to walk · WASD to move'}
+          </p>
           <button
             type="button"
             className="pointer-events-auto text-xs tracking-[0.2em] uppercase"
-            onClick={() => setTarget({ x: contactWorld.x, y: 0, z: contactWorld.z }, 'manual')}
+            onClick={() => setTarget({ x: contactWorld.x, y: 0, z: contactWorld.z })}
           >
             Contact
           </button>
@@ -52,18 +57,30 @@ export function WorldUI({ onFlyToContact }: WorldUIProps) {
             </div>
             <ul className="space-y-2">
               {projects.map((p) => (
-                <li key={p.slug}>
+                <li key={p.slug} className="flex items-center gap-3 py-2">
                   <button
                     type="button"
-                    className="flex w-full gap-4 py-2 text-left hover:opacity-50"
+                    className="flex flex-1 gap-4 text-left hover:opacity-50"
                     onClick={() => {
                       setIndexOpen(false)
-                      navigateToProject(p.slug, 'index')
+                      navigateToProject(p.slug)
                     }}
                   >
                     <span className="text-muted">{p.number}</span>
                     <span className="uppercase">{p.title}</span>
                   </button>
+                  {onOpenProjectDirect && (
+                    <button
+                      type="button"
+                      className="text-[9px] tracking-[0.15em] text-muted underline"
+                      onClick={() => {
+                        setIndexOpen(false)
+                        onOpenProjectDirect(p.slug)
+                      }}
+                    >
+                      Open
+                    </button>
+                  )}
                 </li>
               ))}
             </ul>

@@ -1,6 +1,6 @@
 import type { AnimationAction, AnimationClip } from 'three'
 
-const BLOCKED = ['tpose', 't-pose', 'bind', 'rest']
+const BLOCKED = ['tpose', 't-pose', 'bind', 'rest', 'samba', 'dance', 'layer0']
 
 export function isBlockedClipName(name: string) {
   const n = name.toLowerCase()

@@ -5,7 +5,7 @@ export const CHARACTER_LOCOMOTION_URL = '/models/locomotion-source.glb'
 export const CHARACTER_TARGET_HEIGHT = 1.62
 
 export const ANIM = {
-  idle: ['Idle', 'idle', 'standing', 'stand', 'samba', 'dance', 'layer0'],
+  idle: ['Idle', 'idle', 'standing', 'stand'],
   walk: ['Walk', 'walk', 'walking'],
   point: ['agree', 'Point', 'point'],
   read: ['sad_pose', 'Read', 'read'],

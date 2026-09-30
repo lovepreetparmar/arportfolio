@@ -6,11 +6,11 @@ export const characterSpawn = WORLD_SPAWN
 export const contactWorld = CONTACT_POSITION
 
 export const territoryMood: Record<string, { fog: string; ambient: number }> = {
-  branding: { fog: '#f2efe9', ambient: 0.82 },
-  editorial: { fog: '#f0ece6', ambient: 0.8 },
-  digital: { fog: '#eeebe5', ambient: 0.78 },
-  print: { fog: '#f1ede8', ambient: 0.81 },
-  experiments: { fog: '#efebe4', ambient: 0.79 },
+  branding: { fog: '#efe8dc', ambient: 0.95 },
+  editorial: { fog: '#eee7db', ambient: 0.93 },
+  digital: { fog: '#ede7dc', ambient: 0.92 },
+  print: { fog: '#efe8dd', ambient: 0.94 },
+  experiments: { fog: '#efe7da', ambient: 0.93 },
 }
 
 export function getProjectWorld3(project: Project) {

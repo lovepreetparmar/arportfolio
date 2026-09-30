@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 520" role="img" aria-label="Stylized editorial portrait">
+  <rect width="400" height="520" fill="none"/>
+  <ellipse cx="200" cy="150" rx="72" ry="88" fill="#0a0a0a"/>
+  <path d="M95 500 C110 340 290 340 305 500 Z" fill="#1a1a1a"/>
+  <path d="M130 280 Q200 220 270 280 L285 420 L115 420 Z" fill="#0a0a0a"/>
+  <path d="M168 130 Q200 110 232 130" stroke="#f6f0e4" stroke-width="3" fill="none"/>
+</svg>

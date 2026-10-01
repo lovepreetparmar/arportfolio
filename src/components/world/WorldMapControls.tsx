@@ -40,7 +40,8 @@ export function WorldMapControls() {
     let last = { x: 0, y: 0 }
     let pinchDist = 0
 
-    const canNavigate = () => phaseRef.current === 'world' || phaseRef.current === 'walking'
+    const canNavigate = () => phaseRef.current === 'world' || phaseRef.current === 'walking' || phaseRef.current === 'inRoom'
+    const canPan = () => phaseRef.current !== 'inRoom'
 
     const onWheel = (e: WheelEvent) => {
       if (!canNavigate()) return
@@ -106,7 +107,7 @@ export function WorldMapControls() {
       if (!press || press.id !== e.pointerId) return
       if (!drag) {
         if (Math.hypot(e.clientX - press.x, e.clientY - press.y) < DRAG_THRESHOLD) return
-        drag = press.pan && e.pointerType === 'mouse' ? 'pan' : 'orbit'
+        drag = press.pan && e.pointerType === 'mouse' && canPan() ? 'pan' : 'orbit'
         mapView.dragging = true
         mapView.gestured = true
         last = { x: e.clientX, y: e.clientY }

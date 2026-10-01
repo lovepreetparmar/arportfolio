@@ -9,7 +9,7 @@ export type CharacterState =
   | 'pointing'
   | 'contact'
 
-export const WALK_SPEED = 2.47
+export const WALK_SPEED = 2.72
 
 /** Locomotion layer the controller runs, independent of the expressive `CharacterState`. */
 export type CharacterMotion = 'idle' | 'walking' | 'sitting' | 'standing' | 'enteringProject'
@@ -33,7 +33,7 @@ export function dampAngle(current: number, target: number, lambda: number, delta
   return THREE.MathUtils.lerp(current, target, 1 - Math.exp(-lambda * delta))
 }
 
-export function walkPhaseAdvance(phase: number, delta: number, speed = 9.8) {
+export function walkPhaseAdvance(phase: number, delta: number, speed = 10.78) {
   return phase + delta * speed
 }
 

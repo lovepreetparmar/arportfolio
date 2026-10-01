@@ -1,6 +1,7 @@
 import { useFrame } from '@react-three/fiber'
 import { useMemo, useRef } from 'react'
 import { characterSignals } from '../components/character/characterSignals'
+import { isInRoomSpace } from '../components/project-room/roomSpace'
 import { useOptionalSitting } from '../components/world/benches/SittingContext'
 import type { SitPhase } from '../components/world/benches/SittingState'
 import { dayNight } from '../components/world/daynight/DayNightController'
@@ -55,6 +56,7 @@ export function AudioSceneBridge() {
 }
 
 function surfaceAt(x: number, z: number, entrances: { x: number; z: number }[]): FootstepSurface {
+  if (isInRoomSpace(x, z)) return 'interior'
   if (entrances.some((e) => Math.hypot(e.x - x, e.z - z) < ENTRANCE_RADIUS)) return 'interior'
   if (Math.hypot(x, z) < PLAZA_RADIUS || distanceToPaths({ x, z }) < PATH_HALF_WIDTH) return 'path'
   return 'grass'

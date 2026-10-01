@@ -30,16 +30,17 @@ type ProjectLocationProps = {
 export function ProjectLocation({ project, onSelect }: ProjectLocationProps) {
   const slot = getWorldSlot(project.slug)
   const config = useMemo(() => getProjectWorldConfig(project), [project])
-  const { pendingProjectSlug, doorOpenAmount, journeyPhase, nearProjectSlug } = useWorldState()
+  const { pendingProjectSlug, roomProjectSlug, doorOpenAmount, journeyPhase, nearProjectSlug } = useWorldState()
   const { setMode } = useCursor()
   const [hovered, setHovered] = useState(false)
   const openRef = useRef(0)
   const ctx = useMemo(() => ({ openRef }), [])
   const isActive = pendingProjectSlug === project.slug
+  /** Its door follows the journey on the way in and stays with her room until she is back out. */
+  const doorOwner = isActive || roomProjectSlug === project.slug
 
   useFrame((_, delta) => {
-    const opening = isActive && (journeyPhase === 'doorOpening' || journeyPhase === 'entering' || journeyPhase === 'inRoom')
-    openRef.current = damp(openRef.current, opening ? doorOpenAmount : 0, 12, delta)
+    openRef.current = damp(openRef.current, doorOwner ? doorOpenAmount : 0, 12, delta)
   })
 
   if (!slot) return null

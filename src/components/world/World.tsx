@@ -22,15 +22,15 @@ import { useWorldState } from '../../context/WorldStateContext'
 import { AudioSceneBridge } from '../../audio/AudioSceneBridge'
 import { CharacterNightLight } from './daynight/CharacterNightLight'
 import { NightSky } from './daynight/NightSky'
+import { ProjectRoom } from '../project-room/ProjectRoom'
+import { RoomLights } from '../project-room/RoomLights'
 
 type WorldProps = {
   onSelectProject: (slug: string) => void
-  dimmed?: boolean
 }
 
 function WorldScene({ onSelectProject }: WorldProps) {
-  const { journeyPhase } = useWorldState()
-  const hideCharacter = journeyPhase === 'inRoom' || journeyPhase === 'exiting'
+  const { insideRoom, roomProjectSlug } = useWorldState()
 
   return (
     <>
@@ -47,7 +47,7 @@ function WorldScene({ onSelectProject }: WorldProps) {
       <WorldProximity />
       <SittingDirector />
       <WorldBenches />
-      {!hideCharacter && <Character />}
+      <Character />
       <CharacterNightLight />
       <AudioSceneBridge />
       <AboutSign />
@@ -55,15 +55,15 @@ function WorldScene({ onSelectProject }: WorldProps) {
       {projects.map((p) => (
         <ProjectLocation key={p.slug} project={p} onSelect={onSelectProject} />
       ))}
+      <RoomLights />
+      {insideRoom && roomProjectSlug && <ProjectRoom key={roomProjectSlug} slug={roomProjectSlug} />}
     </>
   )
 }
 
-export function World({ onSelectProject, dimmed }: WorldProps) {
+export function World({ onSelectProject }: WorldProps) {
   return (
-    <div
-      className={`fixed inset-0 z-0 bg-canvas transition-opacity duration-500 ${dimmed ? 'pointer-events-none opacity-0' : 'opacity-100'}`}
-    >
+    <div className="fixed inset-0 z-0 bg-canvas">
       <div
         className="pointer-events-none absolute inset-0 z-10 opacity-[0.04] mix-blend-multiply"
         aria-hidden

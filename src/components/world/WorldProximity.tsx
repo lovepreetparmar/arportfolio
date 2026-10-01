@@ -3,6 +3,7 @@ import { useRef } from 'react'
 import { projects } from '../../data/projects'
 import { getWorldSlot, REVEAL } from '../../data/worldLayout'
 import { useWorldState } from '../../context/WorldStateContext'
+import { isInRoomSpace } from '../project-room/roomSpace'
 
 /** Single pass: nearest project drives territory, accent, and character look-at. */
 export function WorldProximity() {
@@ -53,7 +54,9 @@ export function WorldProximity() {
         prev.current.slug = ''
         setNearProjectSlug(null)
       }
-      if (prev.current.lookKey) {
+      // Kept while she is in a project room, so stepping back out of the same door doesn't turn her
+      // round to face the building she just left.
+      if (prev.current.lookKey && !isInRoomSpace(character.x, character.z)) {
         prev.current.lookKey = ''
         setLookAt(null)
       }

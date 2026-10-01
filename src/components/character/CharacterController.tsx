@@ -5,6 +5,7 @@ import { contactWorld } from '../../data/world3d'
 import { OPENING_FOCUS_SLUG, REVEAL } from '../../data/worldLayout'
 import { useWorldState } from '../../context/WorldStateContext'
 import { useReducedMotion } from '../../hooks/useMediaQuery'
+import { constrainToRoom, isInRoomSpace, roomView } from '../project-room/roomSpace'
 import { useOptionalSitting } from '../world/benches/SittingContext'
 import { isHoldingPosition } from '../world/benches/SittingState'
 import {
@@ -37,6 +38,7 @@ export function CharacterController({ refs }: { refs: CharacterRigRefs }) {
     target,
     pointer,
     updateCharacter,
+    setTarget,
     setMoving,
     lookAt,
     activeTerritory,
@@ -73,10 +75,18 @@ export function CharacterController({ refs }: { refs: CharacterRigRefs }) {
     const dz = target.z - character.z
     const dist = Math.hypot(dx, dz)
     const isWalking = !holding && dist > 0.055
+    const inRoom = isInRoomSpace(character.x, character.z)
 
     if (isWalking) {
       const step = Math.min(dist, WALK_SPEED * delta)
-      updateCharacter({ x: character.x + (dx / dist) * step, y: 0, z: character.z + (dz / dist) * step })
+      let nx = character.x + (dx / dist) * step
+      let nz = character.z + (dz / dist) * step
+      if (inRoom) {
+        ;[nx, nz] = constrainToRoom(nx, nz)
+        // Walking straight into a prop: stop rather than tread on the spot.
+        if (Math.hypot(nx - character.x, nz - character.z) < step * 0.15) setTarget({ x: character.x, y: 0, z: character.z })
+      }
+      updateCharacter({ x: nx, y: 0, z: nz })
       walkPhase.current = walkPhaseAdvance(walkPhase.current, delta)
       setMoving(true)
     } else {
@@ -122,6 +132,8 @@ export function CharacterController({ refs }: { refs: CharacterRigRefs }) {
       targetYaw = nearestAngle(bodyYaw.current, Math.atan2(dx, dz))
     } else if (lookAt && nearProject) {
       targetYaw = nearestAngle(bodyYaw.current, Math.atan2(lookAt.x - character.x, lookAt.z - character.z))
+    } else if (inRoom && roomView.faceYaw !== null) {
+      targetYaw = nearestAngle(bodyYaw.current, roomView.faceYaw)
     }
     bodyYaw.current = dampAngle(bodyYaw.current, targetYaw, reduced && holding ? 30 : turnRate, delta)
     refs.hips.current.rotation.y = bodyYaw.current

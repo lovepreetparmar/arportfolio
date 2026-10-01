@@ -53,28 +53,34 @@ export function ProjectImageViewer({ item, index, total, onClose, onPrev, onNext
               <div className="mt-6 text-canvas">
                 {item.title && <p className="text-lg font-semibold tracking-tight">{item.title}</p>}
                 {item.description && <p className="mt-2 max-w-xl text-sm text-white/75">{item.description}</p>}
-                <p className="mt-4 text-[10px] tracking-[0.25em] uppercase text-white/50">
-                  {index + 1} / {total}
-                </p>
+                {total > 1 && (
+                  <p className="mt-4 text-[10px] tracking-[0.25em] uppercase text-white/50">
+                    {index + 1} / {total}
+                  </p>
+                )}
               </div>
             )}
             <div className="absolute -top-2 right-0 flex gap-4 md:top-0">
-              <button
-                type="button"
-                className="text-xs tracking-[0.2em] uppercase text-white/80"
-                onClick={onPrev}
-                aria-label="Previous image"
-              >
-                Prev
-              </button>
-              <button
-                type="button"
-                className="text-xs tracking-[0.2em] uppercase text-white/80"
-                onClick={onNext}
-                aria-label="Next image"
-              >
-                Next
-              </button>
+              {total > 1 && (
+                <>
+                  <button
+                    type="button"
+                    className="text-xs tracking-[0.2em] uppercase text-white/80"
+                    onClick={onPrev}
+                    aria-label="Previous image"
+                  >
+                    Prev
+                  </button>
+                  <button
+                    type="button"
+                    className="text-xs tracking-[0.2em] uppercase text-white/80"
+                    onClick={onNext}
+                    aria-label="Next image"
+                  >
+                    Next
+                  </button>
+                </>
+              )}
               <button
                 type="button"
                 className="text-xs tracking-[0.2em] uppercase text-white"

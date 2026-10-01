@@ -1,5 +1,7 @@
 import { useState } from 'react'
-import { projects } from '../../data/projects'
+import { getProjectBySlug, projects } from '../../data/projects'
+import { getProjectWorldConfig } from '../../data/projectWorld'
+import { isDark } from '../project-room/roomTextures'
 import { site } from '../../data/site'
 import { useWorldState } from '../../context/WorldStateContext'
 import { contactWorld } from '../../data/world3d'
@@ -14,10 +16,18 @@ type WorldUIProps = {
 }
 
 export function WorldUI({ onFlyToContact, onOpenProjectDirect }: WorldUIProps) {
-  const { setTarget, navigateToProject, journeyPhase } = useWorldState()
+  const { setTarget, navigateToProject, journeyPhase, insideRoom, roomProjectSlug } = useWorldState()
+  const roomProject = insideRoom && roomProjectSlug ? getProjectBySlug(roomProjectSlug) : undefined
+  const darkRoom = !!roomProject && isDark(getProjectWorldConfig(roomProject).room.wallColor)
   const traveling = journeyPhase === 'walking' || journeyPhase === 'arrived' || journeyPhase === 'doorOpening'
+  const hint = insideRoom
+    ? 'Click artwork to look closer · Drag to look · Click the door to leave'
+    : traveling
+      ? 'Walking to project…'
+      : 'Select a location · Click to walk · Drag to look · WASD to move'
   const [indexOpen, setIndexOpen] = useState(false)
-  const { dark } = useDayNight()
+  const { dark: night } = useDayNight()
+  const dark = roomProject ? darkRoom : night
 
   return (
     <>
@@ -41,9 +51,9 @@ export function WorldUI({ onFlyToContact, onOpenProjectDirect }: WorldUIProps) {
         </div>
         <div className="flex items-end justify-between">
           <p
-            className={`text-[10px] tracking-[0.3em] uppercase transition-colors duration-1000 ${dark ? 'text-[#b9b4c4]' : 'text-muted'}`}
+            className={`text-[10px] tracking-[0.3em] uppercase transition-colors duration-1000 ${dark ? 'text-[#b9b4c4]' : roomProject ? 'text-ink/75' : 'text-muted'}`}
           >
-            {traveling ? 'Walking to project…' : 'Select a location · Click to walk · Drag to look · WASD to move'}
+            {hint}
           </p>
           <div className="pointer-events-auto flex items-center gap-5">
             <WorldToggles />

@@ -41,10 +41,11 @@ export function useJourneyAudio() {
       audioManager.setIndoor(INSIDE.world, INSIDE.room, 1.2)
     }
     if (journeyPhase === 'exiting') {
-      audioManager.play('doorOpen')
-      audioManager.play('doorClose', 0.75)
-      audioManager.setIndoor(LEAVING.world, LEAVING.room, 0.4)
+      audioManager.play('doorHandle')
+      audioManager.play('doorOpen', 0.12)
+      audioManager.setIndoor(LEAVING.world, LEAVING.room, 0.8)
     }
+    if (journeyPhase === 'world' && prev === 'exiting') audioManager.play('doorClose')
     if (journeyPhase === 'world' && (prev === 'exiting' || prev === 'entering') && !legacyProjectSlug) {
       audioManager.setIndoor(OUTSIDE.world, OUTSIDE.room, 1.2)
       audioManager.releaseRoom(1.6)

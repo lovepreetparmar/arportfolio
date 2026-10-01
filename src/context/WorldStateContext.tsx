@@ -8,11 +8,13 @@ import {
   type MutableRefObject,
   type ReactNode,
 } from 'react'
+import { useTexture } from '@react-three/drei'
 import { characterSpawn } from '../data/world3d'
 import { getProjectBySlug } from '../data/projects'
-import { getProjectEntrance, hasProjectInteriorRoom } from '../data/projectWorld'
+import { getProjectEntrance, getProjectWorldConfig, hasProjectInteriorRoom } from '../data/projectWorld'
 import { planRoute } from '../data/worldPaths'
 import type { CharacterState } from '../components/character/CharacterAnimations'
+import { ROOM_ARRIVAL, ROOM_DOORSTEP, isInRoomSpace, resetRoomView } from '../components/project-room/roomSpace'
 import { useReducedMotion } from '../hooks/useMediaQuery'
 
 export type Vec3 = { x: number; y: number; z: number }
@@ -58,16 +60,24 @@ type WorldStateContextValue = {
   pendingProjectSlug: string | null
   roomProjectSlug: string | null
   legacyProjectSlug: string | null
+  /** True while she is physically inside a project room (rather than out in the world). */
+  insideRoom: boolean
+  /** Black veil over the canvas while she passes through a doorway. */
+  veil: boolean
+  setVeil: (v: boolean) => void
   doorOpenAmount: number
   setDoorOpenAmount: (n: number) => void
   cameraFocus: Vec3 | null
   navigateToProject: (slug: string) => void
   onCharacterArrivedAtEntrance: () => void
   advanceJourneyTo: (phase: JourneyPhase) => void
+  stepThroughDoor: () => void
   beginProjectReveal: () => void
   openLegacyProjectView: (slug: string) => void
   clearLegacyProjectView: () => void
   exitProjectRoom: () => void
+  leaveRoomToEntrance: () => void
+  finishRoomExit: () => void
   characterRef: MutableRefObject<Vec3>
   targetRef: MutableRefObject<Vec3>
   /** Remaining path waypoints after the current target. */
@@ -77,6 +87,19 @@ type WorldStateContextValue = {
 
 const STORAGE_KEY = 'anushri-world-state'
 const WorldStateContext = createContext<WorldStateContextValue | null>(null)
+
+/** How far she walks into the open doorway before the veil closes. */
+const DOORWAY_DEPTH = 1.15
+/** On the way out she appears just inside the doorway and steps out past the entrance mark. */
+const EXIT_DOORWAY = 0.9
+const EXIT_STEP_OUT = 0.9
+
+function entranceFrame(slug: string) {
+  const project = getProjectBySlug(slug)
+  if (!project) return null
+  const e = getProjectEntrance(project)
+  return { e, fx: Math.sin(e.doorYaw), fz: Math.cos(e.doorYaw) }
+}
 
 export function WorldStateProvider({ children }: { children: ReactNode }) {
   const reduced = useReducedMotion()
@@ -93,15 +116,46 @@ export function WorldStateProvider({ children }: { children: ReactNode }) {
   const [pendingProjectSlug, setPendingProjectSlug] = useState<string | null>(null)
   const [roomProjectSlug, setRoomProjectSlug] = useState<string | null>(null)
   const [legacyProjectSlug, setLegacyProjectSlug] = useState<string | null>(null)
+  const [insideRoom, setInsideRoom] = useState(false)
+  const [veil, setVeil] = useState(false)
   const [doorOpenAmount, setDoorOpenAmount] = useState(0)
   const [cameraFocus, setCameraFocus] = useState<Vec3 | null>(null)
   const characterRef = useRef(character)
   const targetRef = useRef(target)
   const routeRef = useRef<Vec3[]>([])
+  const phaseRef = useRef(journeyPhase)
+  const insideRef = useRef(insideRoom)
+  const pendingRef = useRef(pendingProjectSlug)
+  const roomSlugRef = useRef(roomProjectSlug)
+  /** Project picked from the index while inside a room; visited once she is back outside. */
+  const queuedSlugRef = useRef<string | null>(null)
+  /** Where she was just placed; per-frame moves computed from her old spot are dropped until one starts here. */
+  const placedRef = useRef<Vec3 | null>(null)
   characterRef.current = character
   targetRef.current = target
 
+  const setPhase = useCallback((phase: JourneyPhase) => {
+    phaseRef.current = phase
+    setJourneyPhase(phase)
+  }, [])
+
+  const setPending = useCallback((slug: string | null) => {
+    pendingRef.current = slug
+    setPendingProjectSlug(slug)
+  }, [])
+
+  const setRoomSlug = useCallback((slug: string | null) => {
+    roomSlugRef.current = slug
+    setRoomProjectSlug(slug)
+  }, [])
+
+  const setInside = useCallback((inside: boolean) => {
+    insideRef.current = inside
+    setInsideRoom(inside)
+  }, [])
+
   const setTarget = useCallback((t: Vec3) => {
+    if (isInRoomSpace(t.x, t.z) !== insideRef.current) return
     routeRef.current = []
     setTargetState(t)
     setMoving(true)
@@ -116,7 +170,24 @@ export function WorldStateProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const updateCharacter = useCallback((c: Vec3) => {
+    const placed = placedRef.current
+    if (placed) {
+      if (Math.hypot(c.x - placed.x, c.z - placed.z) > 0.5) return
+      placedRef.current = null
+    }
     setCharacter(c)
+  }, [])
+
+  /** Puts her at `at` (through a doorway) and sets where she walks next. */
+  const placeCharacter = useCallback((at: Vec3, next: Vec3) => {
+    placedRef.current = at
+    routeRef.current = []
+    characterRef.current = at
+    targetRef.current = next
+    setCharacter(at)
+    setTargetState(next)
+    setMoving(Math.hypot(next.x - at.x, next.z - at.z) > 0.05)
+    setLookAt(null)
   }, [])
 
   const saveWorld = useCallback(() => {
@@ -145,18 +216,52 @@ export function WorldStateProvider({ children }: { children: ReactNode }) {
     sessionStorage.removeItem(STORAGE_KEY)
   }, [])
 
-  const advanceJourneyTo = useCallback((phase: JourneyPhase) => {
-    setJourneyPhase(phase)
-  }, [])
+  const advanceJourneyTo = useCallback((phase: JourneyPhase) => setPhase(phase), [setPhase])
+
+  /** She is through the door: the room for `slug` takes over. */
+  const enterRoom = useCallback(
+    (slug: string) => {
+      resetRoomView()
+      setRoomSlug(slug)
+      setInside(true)
+      placeCharacter(ROOM_DOORSTEP, ROOM_ARRIVAL)
+      setPhase('inRoom')
+      setPending(null)
+      setDoorOpenAmount(0)
+      setCameraFocus(null)
+    },
+    [placeCharacter, setInside, setPending, setPhase, setRoomSlug],
+  )
+
+  const exitProjectRoom = useCallback(() => {
+    if (phaseRef.current !== 'inRoom') return
+    setPhase('exiting')
+    routeRef.current = []
+    setTargetState(ROOM_DOORSTEP)
+    setMoving(true)
+  }, [setPhase])
 
   const navigateToProject = useCallback(
     (slug: string) => {
       const project = getProjectBySlug(slug)
       if (!project) return
+      const phase = phaseRef.current
+      if (phase === 'inRoom') {
+        if (slug !== roomSlugRef.current) {
+          queuedSlugRef.current = slug
+          exitProjectRoom()
+        }
+        return
+      }
+      if (phase !== 'world' && phase !== 'walking') return
+      if (phase === 'walking' && pendingRef.current === slug) return
+
+      const config = getProjectWorldConfig(project)
+      if (config.hasInteriorRoom) useTexture.preload(config.gallery.map((g) => g.src))
       saveWorld()
-      setPendingProjectSlug(slug)
+      setPending(slug)
       setLegacyProjectSlug(null)
-      setRoomProjectSlug(null)
+      setRoomSlug(null)
       setDoorOpenAmount(0)
 
       const entrance = getProjectEntrance(project)
@@ -164,84 +269,106 @@ export function WorldStateProvider({ children }: { children: ReactNode }) {
       setLookAt({ x: entrance.buildingX, y: 1.1, z: entrance.buildingZ })
 
       if (reduced) {
-        if (hasProjectInteriorRoom(slug)) {
-          setJourneyPhase('inRoom')
-          setRoomProjectSlug(slug)
-          setPendingProjectSlug(null)
-          setCameraFocus(null)
+        if (config.hasInteriorRoom) {
+          enterRoom(slug)
         } else {
-          setJourneyPhase('world')
+          setPhase('world')
           setLegacyProjectSlug(slug)
-          setPendingProjectSlug(null)
+          setPending(null)
           setCameraFocus(null)
         }
         return
       }
 
-      setJourneyPhase('walking')
+      setPhase('walking')
       const route = planRoute(characterRef.current, slug)
       const first = route.shift() ?? { x: entrance.x, y: 0, z: entrance.z }
       routeRef.current = route
       setTargetState(first)
       setMoving(true)
     },
-    [reduced, saveWorld],
+    [reduced, saveWorld, enterRoom, exitProjectRoom, setPending, setPhase, setRoomSlug],
   )
 
   const onCharacterArrivedAtEntrance = useCallback(() => {
-    setJourneyPhase((phase) => {
-      if (phase !== 'walking') return phase
-      return 'arrived'
-    })
+    if (phaseRef.current !== 'walking') return
+    setPhase('arrived')
     setMoving(false)
+  }, [setPhase])
+
+  /** With the door open she walks on into the doorway. */
+  const stepThroughDoor = useCallback(() => {
+    const slug = pendingRef.current
+    const frame = slug ? entranceFrame(slug) : null
+    if (!frame) return
+    const { e, fx, fz } = frame
+    routeRef.current = []
+    setTargetState({ x: e.x - fx * DOORWAY_DEPTH, y: 0, z: e.z - fz * DOORWAY_DEPTH })
+    setMoving(true)
   }, [])
 
   const beginProjectReveal = useCallback(() => {
-    const slug = pendingProjectSlug
-    if (!slug) return
+    const slug = pendingRef.current
+    if (!slug || phaseRef.current !== 'entering') return
     if (hasProjectInteriorRoom(slug)) {
-      setRoomProjectSlug(slug)
-      setJourneyPhase('inRoom')
-    } else {
-      setLegacyProjectSlug(slug)
-      setJourneyPhase('world')
-      setDoorOpenAmount(0)
-      setCameraFocus(null)
+      enterRoom(slug)
+      return
     }
-    setPendingProjectSlug(null)
-  }, [pendingProjectSlug])
-
-  const openLegacyProjectView = useCallback((slug: string) => {
     setLegacyProjectSlug(slug)
-    setPendingProjectSlug(null)
-    setJourneyPhase('world')
+    setPhase('world')
     setDoorOpenAmount(0)
     setCameraFocus(null)
-  }, [])
+    setPending(null)
+  }, [enterRoom, setPending, setPhase])
+
+  /** Behind the veil: she leaves the room and stands in the building's open doorway. */
+  const leaveRoomToEntrance = useCallback(() => {
+    const slug = roomSlugRef.current
+    const frame = slug ? entranceFrame(slug) : null
+    if (!frame) return
+    const { e, fx, fz } = frame
+    setInside(false)
+    placeCharacter(
+      { x: e.x - fx * EXIT_DOORWAY, y: 0, z: e.z - fz * EXIT_DOORWAY },
+      { x: e.x + fx * EXIT_STEP_OUT, y: 0, z: e.z + fz * EXIT_STEP_OUT },
+    )
+  }, [placeCharacter, setInside])
+
+  const finishRoomExit = useCallback(() => {
+    if (phaseRef.current !== 'exiting') return
+    setPhase('world')
+    setRoomSlug(null)
+    setDoorOpenAmount(0)
+    setCameraFocus(null)
+    resetRoomView()
+    clearSavedWorld()
+    const queued = queuedSlugRef.current
+    queuedSlugRef.current = null
+    if (queued) navigateToProject(queued)
+  }, [clearSavedWorld, navigateToProject, setPhase, setRoomSlug])
+
+  const openLegacyProjectView = useCallback(
+    (slug: string) => {
+      setLegacyProjectSlug(slug)
+      setPending(null)
+      setPhase('world')
+      setDoorOpenAmount(0)
+      setCameraFocus(null)
+    },
+    [setPending, setPhase],
+  )
 
   const clearLegacyProjectView = useCallback(() => {
     setLegacyProjectSlug(null)
+    if (insideRef.current) return
     restoreWorld()
     clearSavedWorld()
-    setJourneyPhase('world')
+    setPhase('world')
     setDoorOpenAmount(0)
     setCameraFocus(null)
-    setPendingProjectSlug(null)
-    setRoomProjectSlug(null)
-  }, [restoreWorld, clearSavedWorld])
-
-  const exitProjectRoom = useCallback(() => {
-    setJourneyPhase('exiting')
-    setDoorOpenAmount(0)
-    window.setTimeout(() => {
-      setRoomProjectSlug(null)
-      setJourneyPhase('world')
-      setCameraFocus(null)
-      restoreWorld()
-      clearSavedWorld()
-      setPendingProjectSlug(null)
-    }, reduced ? 120 : 700)
-  }, [restoreWorld, clearSavedWorld, reduced])
+    setPending(null)
+    setRoomSlug(null)
+  }, [restoreWorld, clearSavedWorld, setPending, setPhase, setRoomSlug])
 
   const value = useMemo(
     () => ({
@@ -270,16 +397,22 @@ export function WorldStateProvider({ children }: { children: ReactNode }) {
       pendingProjectSlug,
       roomProjectSlug,
       legacyProjectSlug,
+      insideRoom,
+      veil,
+      setVeil,
       doorOpenAmount,
       setDoorOpenAmount,
       cameraFocus,
       navigateToProject,
       onCharacterArrivedAtEntrance,
       advanceJourneyTo,
+      stepThroughDoor,
       beginProjectReveal,
       openLegacyProjectView,
       clearLegacyProjectView,
       exitProjectRoom,
+      leaveRoomToEntrance,
+      finishRoomExit,
       characterRef,
       targetRef,
       routeRef,
@@ -304,15 +437,20 @@ export function WorldStateProvider({ children }: { children: ReactNode }) {
       pendingProjectSlug,
       roomProjectSlug,
       legacyProjectSlug,
+      insideRoom,
+      veil,
       doorOpenAmount,
       cameraFocus,
       navigateToProject,
       onCharacterArrivedAtEntrance,
       advanceJourneyTo,
+      stepThroughDoor,
       beginProjectReveal,
       openLegacyProjectView,
       clearLegacyProjectView,
       exitProjectRoom,
+      leaveRoomToEntrance,
+      finishRoomExit,
       advanceRoute,
     ],
   )

@@ -168,19 +168,26 @@ function labelArms(pos: THREE.BufferAttribute, normal: THREE.BufferAttribute | u
  * The generator painted sleeve and skin onto the hips where the arms and hands pressed against them, which shows as dark
  * streaks once an arm moves away. Those hip vertices borrow the texture of the nearest denim instead.
  */
-function patchHipTexture(pos: THREE.BufferAttribute, uv: THREE.BufferAttribute, armSide: Uint8Array, image: CanvasImageSource) {
-  if (typeof OffscreenCanvas === 'undefined') return
+type TexelReader = (u: number, v: number) => [r: number, g: number, b: number]
+
+function texelReader(image: CanvasImageSource | undefined): TexelReader | null {
+  if (!image || typeof OffscreenCanvas === 'undefined') return null
   const size = 512
   const ctx = new OffscreenCanvas(size, size).getContext('2d')
-  if (!ctx) return
+  if (!ctx) return null
   ctx.drawImage(image, 0, 0, size, size)
   const px = ctx.getImageData(0, 0, size, size).data
-  const texel = (v: number) => {
-    const x = THREE.MathUtils.clamp(Math.floor(uv.getX(v) * size), 0, size - 1)
-    const y = THREE.MathUtils.clamp(Math.floor(uv.getY(v) * size), 0, size - 1)
-    return (y * size + x) * 4
+  return (u, v) => {
+    const x = THREE.MathUtils.clamp(Math.floor(u * size), 0, size - 1)
+    const y = THREE.MathUtils.clamp(Math.floor(v * size), 0, size - 1)
+    const i = (y * size + x) * 4
+    return [px[i], px[i + 1], px[i + 2]]
   }
+}
 
+const isDenim = ([r, , b]: [number, number, number]) => b - r > 13 && b > 90
+
+function patchHipTexture(pos: THREE.BufferAttribute, uv: THREE.BufferAttribute, armSide: Uint8Array, read: TexelReader) {
   const denim: number[] = []
   const painted: number[] = []
   for (let v = 0; v < pos.count; v++) {
@@ -189,8 +196,7 @@ function patchHipTexture(pos: THREE.BufferAttribute, uv: THREE.BufferAttribute, 
     if (armSide[v] || y < J.handBottom - 0.04 || y > J.jeansTop) continue
     const [axisX, halfX, axisZ, halfZ] = armProfile(y)
     if (ax < axisX - halfX * 1.5 || ax > axisX || Math.abs(pos.getZ(v) - axisZ) > halfZ * 1.5) continue
-    const i = texel(v)
-    ;(px[i + 2] - px[i] > 13 && px[i + 2] > 90 ? denim : painted).push(v)
+    ;(isDenim(read(uv.getX(v), uv.getY(v))) ? denim : painted).push(v)
   }
 
   // Nearest in texture space among nearby denim, so the patch stays within the same texture island and doesn't streak.
@@ -274,11 +280,13 @@ function buildSkeleton() {
 /**
  * The generated mesh is one closed skin wrapped around arm and torso together, so cutting them apart leaves the flank
  * under each arm (and the hip under each hand) open. Each opening is closed by stitching its two sides together
- * bottom-up. Every stitched triangle samples a single texel from its nearest rim vertex: rim neighbours often lie on
- * different islands of the texture atlas, and interpolating between them would smear unrelated texture across the gap.
+ * bottom-up. Every stitched triangle samples a single texel: rim neighbours often lie on different islands of the
+ * texture atlas, and interpolating between them would smear unrelated texture across the gap. On the body that texel
+ * is the rim's cleanest denim (or darkest top, above the waistband), since the rim itself carries sleeve paint.
  */
-function capOpenings(geometry: THREE.BufferGeometry, triangles: number[], armSide: Uint8Array) {
+function capOpenings(geometry: THREE.BufferGeometry, triangles: number[], armSide: Uint8Array, read: TexelReader | null) {
   const pos = geometry.getAttribute('position')
+  const uv = geometry.getAttribute('uv')
   const n = pos.count
   const weld = new Int32Array(n)
   const byPosition = new Map<string, number>()
@@ -314,6 +322,7 @@ function capOpenings(geometry: THREE.BufferGeometry, triangles: number[], armSid
   }
 
   const added: number[] = []
+  const texelOf: number[] = []
   const seen = new Set<number>()
   for (const start of rim.keys()) {
     if (seen.has(start)) continue
@@ -360,16 +369,35 @@ function capOpenings(geometry: THREE.BufferGeometry, triangles: number[], armSid
       sideA = path.slice(0, low + 1).reverse()
       sideB = path.slice(low)
     }
+
+    let denim = -1
+    let dark = -1
+    if (read && uv && !armSide[path[0]]) {
+      let bestBlue = -Infinity
+      let bestDark = Infinity
+      for (const v of path) {
+        const c = read(uv.getX(v), uv.getY(v))
+        if (pos.getY(v) < J.jeansTop) {
+          if (isDenim(c) && c[2] - c[0] > bestBlue) [bestBlue, denim] = [c[2] - c[0], v]
+        } else if (c[0] + c[1] + c[2] < bestDark) [bestDark, dark] = [c[0] + c[1] + c[2], v]
+      }
+    }
+    const stitch = (a: number, b: number, c: number) => {
+      added.push(a, b, c)
+      const y = (pos.getY(a) + pos.getY(b) + pos.getY(c)) / 3
+      const flat = y < J.jeansTop ? denim : dark
+      texelOf.push(flat >= 0 ? flat : a)
+    }
     let i = 0
     let j = 0
     while (i < sideA.length - 1 || j < sideB.length - 1) {
       const advanceA =
         j >= sideB.length - 1 || (i < sideA.length - 1 && pos.getY(sideA[i + 1]) <= pos.getY(sideB[j + 1]))
       if (advanceA) {
-        added.push(sideA[i], sideB[j], sideA[i + 1])
+        stitch(sideA[i], sideB[j], sideA[i + 1])
         i++
       } else {
-        added.push(sideA[i], sideB[j], sideB[j + 1])
+        stitch(sideA[i], sideB[j], sideB[j + 1])
         j++
       }
     }
@@ -385,10 +413,8 @@ function capOpenings(geometry: THREE.BufferGeometry, triangles: number[], armSid
     for (let v = 0; v < n; v++) for (let k = 0; k < size; k++) data[v * size + k] = attr.getComponent(v, k)
     for (let t = 0; t < extra; t++) {
       const src = added[t]
-      const texelSrc = added[t - (t % 3)]
-      for (let k = 0; k < size; k++) {
-        data[(n + t) * size + k] = attr.getComponent(name === 'uv' ? texelSrc : src, k)
-      }
+      const from = name === 'uv' ? texelOf[Math.floor(t / 3)] : src
+      for (let k = 0; k < size; k++) data[(n + t) * size + k] = attr.getComponent(from, k)
     }
     if (name === 'normal') {
       for (let t = 0; t < extra; t++) {
@@ -456,8 +482,9 @@ function createSkinnedCharacter(scene: THREE.Object3D) {
   const material = (src.material as THREE.MeshStandardMaterial).clone()
   const uv = geometry.getAttribute('uv') as THREE.BufferAttribute | undefined
   const image = material.map?.image as CanvasImageSource | undefined
-  if (uv && image) patchHipTexture(pos, uv, armSide, image)
-  geometry.setIndex(capOpenings(geometry, kept, armSide))
+  const read = texelReader(image)
+  if (uv && read) patchHipTexture(pos, uv, armSide, read)
+  geometry.setIndex(capOpenings(geometry, kept, armSide, read))
   material.side = THREE.DoubleSide
   material.metalness = 0
   material.metalnessMap = null
@@ -518,8 +545,6 @@ export function CharacterModel({ refs }: { refs: CharacterRigRefs }) {
     const chest = refs.chest.current
     if (!root || !hips || !chest) return
     mesh.position.copy(root.position)
-    ;(window as any).__charModel ??= { mesh, bones, freeze: false }
-    if ((window as any).__charModel.freeze) return
     for (const [bone, key] of ROTATION_SOURCES) {
       const src = refs[key].current
       if (src) bones[bone].rotation.copy(src.rotation)

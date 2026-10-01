@@ -3,6 +3,7 @@ import { useRef } from 'react'
 import * as THREE from 'three'
 import { useWorldState } from '../../context/WorldStateContext'
 import { useCharacterKeyboard } from '../character/useCharacterKeyboard'
+import { clearRoomFocus, constrainToRoom } from '../project-room/roomSpace'
 
 const FORWARD = ['w', 'arrowup']
 const BACK = ['s', 'arrowdown']
@@ -14,11 +15,11 @@ const forward = new THREE.Vector3()
 const right = new THREE.Vector3()
 const up = new THREE.Vector3(0, 1, 0)
 
-/** WASD / arrow keys steer the character relative to the camera while exploring the world. */
+/** WASD / arrow keys steer the character relative to the camera, in the world and inside a project room. */
 export function WorldKeyboardControls() {
   const keys = useCharacterKeyboard()
   const { camera } = useThree()
-  const { character, setTarget, journeyPhase } = useWorldState()
+  const { character, setTarget, journeyPhase, insideRoom } = useWorldState()
   const steering = useRef(false)
 
   useFrame(() => {
@@ -26,11 +27,13 @@ export function WorldKeyboardControls() {
     const any = (list: string[]) => list.some((k) => pressed.has(k))
     const ix = (any(RIGHT) ? 1 : 0) - (any(LEFT) ? 1 : 0)
     const iz = (any(FORWARD) ? 1 : 0) - (any(BACK) ? 1 : 0)
+    const free = journeyPhase === 'world' || (journeyPhase === 'inRoom' && insideRoom)
 
-    if (journeyPhase !== 'world' || (ix === 0 && iz === 0)) {
+    if (!free || (ix === 0 && iz === 0)) {
       if (steering.current) {
         steering.current = false
-        setTarget({ x: character.x, y: 0, z: character.z })
+        // A journey that took over owns her target; only a released key stops her on the spot.
+        if (free) setTarget({ x: character.x, y: 0, z: character.z })
       }
       return
     }
@@ -43,7 +46,13 @@ export function WorldKeyboardControls() {
     const dz = forward.z * iz + right.z * ix
     const len = Math.hypot(dx, dz) || 1
     steering.current = true
-    setTarget({ x: character.x + (dx / len) * STEP_AHEAD, y: 0, z: character.z + (dz / len) * STEP_AHEAD })
+    let tx = character.x + (dx / len) * STEP_AHEAD
+    let tz = character.z + (dz / len) * STEP_AHEAD
+    if (insideRoom) {
+      clearRoomFocus()
+      ;[tx, tz] = constrainToRoom(tx, tz)
+    }
+    setTarget({ x: tx, y: 0, z: tz })
   })
 
   return null

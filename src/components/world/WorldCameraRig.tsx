@@ -7,6 +7,14 @@ import { getProjectBySlug } from '../../data/projects'
 import { getProjectEntrance } from '../../data/projectWorld'
 import { damp } from '../character/CharacterAnimations'
 import { characterSignals } from '../character/characterSignals'
+import {
+  ROOM_BASE_DISTANCE,
+  ROOM_FOV,
+  ROOM_POLAR_RANGE,
+  ROOM_ZOOM_RANGE,
+  roomCollisionDistance,
+  roomView,
+} from '../project-room/roomSpace'
 import { collisionDistance, minCameraHeight } from './cameraCollision'
 import {
   BASE_DISTANCE,
@@ -33,6 +41,10 @@ const DOOR_LOOK_Y = 1.25
 const FOCUS_AHEAD = 3
 /** Lower views come closer (fraction of the orbit distance at the lowest angle), keeping her readable. */
 const LOW_ANGLE_DISTANCE = 0.62
+/** Indoor view on arrival: from behind her, toward the hero wall. */
+const ROOM_ARRIVAL_POLAR = 1.15
+/** Indoors the orbit centres a little above her shoulders so the walls stay in frame. */
+const ROOM_PIVOT_HEIGHT = 1.45
 
 const desiredPivot = new THREE.Vector3()
 const desiredCamera = new THREE.Vector3()
@@ -55,16 +67,18 @@ function orbitPosition(pivot: THREE.Vector3, azimuth: number, polar: number, dis
  * The world camera: a third-person orbit around Anushri's upper torso. The visitor owns the
  * viewing angle (drag to orbit, wheel / pinch to zoom); the camera follows her position but never
  * swings behind her on its own. Dragging up past the lowest orbit tilts the view into the sky.
- * Selecting a project levels the view and eases it onto the door and back again.
+ * Selecting a project levels the view and eases it onto the door and back again. Inside a project
+ * room the same orbit follows her (or a focused artwork) and stays within the walls.
  */
 export function WorldCameraRig() {
   const { camera } = useThree()
-  const { character, journeyPhase, pendingProjectSlug, moving } = useWorldState()
+  const { character, journeyPhase, pendingProjectSlug, roomProjectSlug, moving, insideRoom } = useWorldState()
   const reduced = useReducedMotion()
   const pivot = useRef<THREE.Vector3 | null>(null)
   const distance = useRef(BASE_DISTANCE)
   const reach = useRef(BASE_DISTANCE)
   const tilt = useRef(FRAME_TILT)
+  const wasInside = useRef(insideRoom)
 
   useFrame((_, rawDelta) => {
     const delta = Math.min(rawDelta, 0.1)
@@ -73,9 +87,29 @@ export function WorldCameraRig() {
     const project = pendingProjectSlug ? getProjectBySlug(pendingProjectSlug) : undefined
     const entrance = project ? getProjectEntrance(project) : null
     const doorShot = !!entrance && (phase === 'arrived' || phase === 'doorOpening' || phase === 'entering')
-    const mode: CameraMode =
-      phase === 'inRoom' || phase === 'exiting' ? 'PROJECT_ROOM' : doorShot ? 'PROJECT_TRANSITION' : 'WORLD'
+    const mode: CameraMode = insideRoom ? 'PROJECT_ROOM' : doorShot ? 'PROJECT_TRANSITION' : 'WORLD'
     view.mode = mode
+
+    // Passing through a doorway (behind the veil) cuts straight to the new place.
+    const cut = insideRoom !== wasInside.current
+    if (cut) {
+      wasInside.current = insideRoom
+      view.panX = view.panZ = view.targetPanX = view.targetPanZ = 0
+      if (insideRoom) {
+        view.azimuth = view.targetAzimuth = 0
+        view.polar = view.targetPolar = ROOM_ARRIVAL_POLAR
+        view.zoom = view.targetZoom = 1
+      } else {
+        const left = roomProjectSlug ? getProjectBySlug(roomProjectSlug) : undefined
+        if (left) view.azimuth = view.targetAzimuth = nearestAngle(view.azimuth, getProjectEntrance(left).doorYaw)
+        view.polar = view.targetPolar = DEFAULT_POLAR
+        view.zoom = view.targetZoom = 1
+      }
+    }
+    if (mode === 'PROJECT_ROOM') {
+      view.targetZoom = THREE.MathUtils.clamp(view.targetZoom, ...ROOM_ZOOM_RANGE)
+      view.targetPolar = THREE.MathUtils.clamp(view.targetPolar, ...ROOM_POLAR_RANGE)
+    }
 
     view.zoom = damp(view.zoom, view.targetZoom, reduced ? 20 : ZOOM_DAMPING, delta)
     if (mode !== 'WORLD' || (moving && !view.dragging)) {
@@ -108,8 +142,21 @@ export function WorldCameraRig() {
       polar = Math.atan2(horizontal, up)
       dist = Math.hypot(horizontal, up)
       frameTilt = 0
+    } else if (mode === 'PROJECT_ROOM') {
+      if (phase === 'exiting') view.targetAzimuth = azimuth = nearestAngle(view.azimuth, Math.PI)
+      const focus = roomView.focus
+      if (focus) {
+        desiredPivot.set(focus.x, focus.y, focus.z)
+        dist = focus.distance * view.zoom
+        frameTilt = 0
+      } else {
+        const fresh = cut || !characterSignals.present
+        desiredPivot.set(fresh ? character.x : characterSignals.x, ROOM_PIVOT_HEIGHT, fresh ? character.z : characterSignals.z)
+        dist = ROOM_BASE_DISTANCE * view.zoom
+        frameTilt = 0.1
+      }
     } else {
-      const present = characterSignals.present
+      const present = characterSignals.present && !cut
       desiredPivot.set(present ? characterSignals.x : character.x, PIVOT_HEIGHT, present ? characterSignals.z : character.z)
       if (entrance && phase === 'walking') {
         desiredPivot.x = THREE.MathUtils.lerp(desiredPivot.x, entrance.buildingX, WALK_LEAN)
@@ -121,11 +168,12 @@ export function WorldCameraRig() {
     }
 
     const transition = mode === 'PROJECT_TRANSITION'
-    const orbitLambda = reduced ? 30 : transition ? 2.6 : view.dragging ? 14 : ORBIT_DAMPING
-    const followLambda = reduced ? 30 : transition ? 2.8 : phase === 'walking' ? 4.5 : 6
+    const room = mode === 'PROJECT_ROOM'
+    const orbitLambda = reduced ? 30 : transition ? 2.6 : view.dragging ? 14 : room ? 4.5 : ORBIT_DAMPING
+    const followLambda = reduced ? 30 : transition ? 2.8 : room ? 4 : phase === 'walking' ? 4.5 : 6
     view.azimuth = damp(view.azimuth, azimuth, orbitLambda, delta)
     view.polar = damp(view.polar, polar, orbitLambda, delta)
-    distance.current = damp(distance.current, dist, reduced ? 30 : transition ? 2.8 : 9, delta)
+    distance.current = damp(distance.current, dist, reduced ? 30 : transition ? 2.8 : room ? 4 : 9, delta)
     tilt.current = damp(tilt.current, frameTilt, 3, delta)
 
     if (!pivot.current) pivot.current = desiredPivot.clone()
@@ -133,12 +181,21 @@ export function WorldCameraRig() {
     p.x = damp(p.x, desiredPivot.x, followLambda, delta)
     p.y = damp(p.y, desiredPivot.y, followLambda, delta)
     p.z = damp(p.z, desiredPivot.z, followLambda, delta)
+    if (cut) {
+      p.copy(desiredPivot)
+      view.azimuth = azimuth
+      view.polar = polar
+      distance.current = dist
+      tilt.current = frameTilt
+    }
 
     const orbitPolar = Math.min(view.polar, MAX_POLAR_ANGLE)
     const lookUp = Math.max(0, view.polar - MAX_POLAR_ANGLE)
     orbitPosition(p, view.azimuth, orbitPolar, distance.current, desiredCamera)
-    const clear = mode === 'WORLD' ? collisionDistance(p, desiredCamera) : distance.current
-    reach.current = clear < reach.current ? damp(reach.current, clear, 25, delta) : damp(reach.current, clear, 3, delta)
+    const clear =
+      mode === 'WORLD' ? collisionDistance(p, desiredCamera) : room ? roomCollisionDistance(p, desiredCamera) : distance.current
+    if (cut) reach.current = clear
+    else reach.current = clear < reach.current ? damp(reach.current, clear, 25, delta) : damp(reach.current, clear, 3, delta)
     orbitPosition(p, view.azimuth, orbitPolar, Math.min(distance.current, reach.current), camera.position)
     camera.position.y = Math.max(camera.position.y, minCameraHeight(camera.position.x, camera.position.z))
     camera.lookAt(p)
@@ -148,8 +205,8 @@ export function WorldCameraRig() {
     view.focusZ = p.z - Math.cos(view.azimuth) * FOCUS_AHEAD
 
     if (camera instanceof THREE.PerspectiveCamera) {
-      const targetFov = phase === 'entering' ? 34 : phase === 'doorOpening' ? 36 : 38
-      camera.fov = damp(camera.fov, targetFov, 3, delta)
+      const targetFov = room ? ROOM_FOV : phase === 'entering' ? 34 : phase === 'doorOpening' ? 36 : 38
+      camera.fov = cut ? targetFov : damp(camera.fov, targetFov, 3, delta)
       camera.updateProjectionMatrix()
     }
   })

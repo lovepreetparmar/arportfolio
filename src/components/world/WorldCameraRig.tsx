@@ -26,6 +26,7 @@ import {
   REVEAL_FROM,
   ZOOM_DAMPING,
   clampPolar,
+  manualControlBlend,
   mapView,
   revealProgress,
   type CameraMode,
@@ -55,9 +56,21 @@ const SPIN_DECAY = 3.6
  */
 const SELECT_FRAME_OFFSET = 0.55
 const SELECT_FRAME_DAMPING = 1.8
+/** First soft-follow stage: character → chase point (metres lag while walking). */
+const WALK_CHASE_LAMBDA = 2.65
+/** Second stage: chase → orbit pivot (catches up without snapping). */
+const WALK_PIVOT_LAMBDA = 4.1
+const IDLE_FOLLOW_LAMBDA = 6.2
+/** Extra lag on camera position only while she is walking outdoors. */
+const WALK_CAMERA_LAG = 5.4
+const STOP_FOLLOW_LAMBDA = 4.8
+/** Composition: a touch more headroom while following on foot. */
+const WALK_FRAME_TILT = 0.094
 
 const desiredPivot = new THREE.Vector3()
 const desiredCamera = new THREE.Vector3()
+const chasePivot = new THREE.Vector3()
+const smoothCamera = new THREE.Vector3()
 
 /** Equivalent of `target` within ±π of `current`, so the camera swings the short way round. */
 function nearestAngle(current: number, target: number) {
@@ -91,12 +104,15 @@ export function WorldCameraRig() {
   const wasInside = useRef(insideRoom)
   /** Project the selection glide was set up for, and whether it is still easing. */
   const framed = useRef<{ slug: string | null; gliding: boolean }>({ slug: null, gliding: false })
+  const followInit = useRef(false)
 
   useFrame((_, rawDelta) => {
     const delta = Math.min(rawDelta, 0.1)
     const view = mapView
     const phase = journeyPhase
     const entrance = pendingProjectSlug ? getPlaceEntrance(pendingProjectSlug) : null
+    const now = performance.now()
+    const autoFrame = manualControlBlend(now)
 
     const frame = framed.current
     if (phase !== 'walking' || !entrance) {
@@ -106,8 +122,8 @@ export function WorldCameraRig() {
       frame.slug = pendingProjectSlug
       const ideal = Math.atan2(character.x - entrance.buildingX, character.z - entrance.buildingZ)
       const off = Math.atan2(Math.sin(ideal - view.targetAzimuth), Math.cos(ideal - view.targetAzimuth))
-      if (!reduced && Math.abs(off) > SELECT_FRAME_OFFSET) {
-        view.targetAzimuth += off - Math.sign(off) * SELECT_FRAME_OFFSET
+      if (!reduced && autoFrame > 0.4 && Math.abs(off) > SELECT_FRAME_OFFSET) {
+        view.targetAzimuth += (off - Math.sign(off) * SELECT_FRAME_OFFSET) * autoFrame
         frame.gliding = true
       }
     }
@@ -148,8 +164,10 @@ export function WorldCameraRig() {
     view.zoom = damp(view.zoom, view.targetZoom, reduced ? 20 : ZOOM_DAMPING, delta)
     const reveal = mode === 'WORLD' ? revealProgress(performance.now()) : 1
     if (reveal < 1) view.zoom = THREE.MathUtils.lerp(REVEAL_FROM.zoom, view.targetZoom, reveal)
+    const cinematicWalk = mode === 'WORLD' && (moving || characterSignals.walking)
     if (mode !== 'WORLD' || (moving && !view.dragging)) {
-      const recenter = mode === 'WORLD' ? PAN_RECENTER_DAMPING : 4
+      const recenter =
+        mode === 'WORLD' ? PAN_RECENTER_DAMPING * (0.22 + 0.78 * autoFrame) * (cinematicWalk ? 0.92 : 1) : 4
       view.targetPanX = damp(view.targetPanX, 0, recenter, delta)
       view.targetPanZ = damp(view.targetPanZ, 0, recenter, delta)
     }
@@ -163,6 +181,7 @@ export function WorldCameraRig() {
     const lowView = THREE.MathUtils.smoothstep(view.polar, DEFAULT_POLAR, MAX_POLAR_ANGLE)
     let dist = BASE_DISTANCE * view.zoom * THREE.MathUtils.lerp(1, LOW_ANGLE_DISTANCE, lowView)
     let frameTilt = FRAME_TILT * (1 - 0.5 * lowView)
+    if (cinematicWalk) frameTilt = THREE.MathUtils.lerp(frameTilt, WALK_FRAME_TILT * (1 - 0.45 * lowView), 0.35)
 
     if (mode === 'PROJECT_TRANSITION' && entrance) {
       const fx = Math.sin(entrance.doorYaw)
@@ -213,10 +232,32 @@ export function WorldCameraRig() {
           ? 14
           : room
             ? 4.5
-            : frame.gliding
-              ? SELECT_FRAME_DAMPING
+            : frame.gliding && autoFrame > 0.35
+              ? SELECT_FRAME_DAMPING * (0.35 + 0.65 * autoFrame)
               : ORBIT_DAMPING
-    const followLambda = reduced ? 30 : transition ? 2.8 : room ? 4 : phase === 'walking' ? 4.5 : 6
+    const settling = mode === 'WORLD' && !cinematicWalk && !moving && characterSignals.present
+    const chaseLambda = reduced
+      ? 30
+      : transition
+        ? 2.8
+        : room
+          ? 4
+          : cinematicWalk
+            ? WALK_CHASE_LAMBDA
+            : settling
+              ? STOP_FOLLOW_LAMBDA
+              : IDLE_FOLLOW_LAMBDA
+    const pivotLambda = reduced
+      ? 30
+      : transition
+        ? 2.8
+        : room
+          ? 4
+          : cinematicWalk
+            ? WALK_PIVOT_LAMBDA
+            : settling
+              ? STOP_FOLLOW_LAMBDA
+              : IDLE_FOLLOW_LAMBDA
     view.azimuth = damp(view.azimuth, azimuth, orbitLambda, delta)
     view.polar = damp(view.polar, polar, orbitLambda, delta)
     if (reveal < 1) {
@@ -226,13 +267,22 @@ export function WorldCameraRig() {
     distance.current = damp(distance.current, dist, reduced ? 30 : transition ? 2.8 : room ? 4 : 9, delta)
     tilt.current = damp(tilt.current, frameTilt, 3, delta)
 
-    if (!pivot.current) pivot.current = desiredPivot.clone()
+    if (!pivot.current) {
+      pivot.current = desiredPivot.clone()
+      chasePivot.copy(desiredPivot)
+      followInit.current = false
+    }
     const p = pivot.current
-    p.x = damp(p.x, desiredPivot.x, followLambda, delta)
-    p.y = damp(p.y, desiredPivot.y, followLambda, delta)
-    p.z = damp(p.z, desiredPivot.z, followLambda, delta)
+    chasePivot.x = damp(chasePivot.x, desiredPivot.x, chaseLambda, delta)
+    chasePivot.y = damp(chasePivot.y, desiredPivot.y, chaseLambda, delta)
+    chasePivot.z = damp(chasePivot.z, desiredPivot.z, chaseLambda, delta)
+    p.x = damp(p.x, chasePivot.x, pivotLambda, delta)
+    p.y = damp(p.y, chasePivot.y, pivotLambda, delta)
+    p.z = damp(p.z, chasePivot.z, pivotLambda, delta)
     if (cut) {
+      chasePivot.copy(desiredPivot)
       p.copy(desiredPivot)
+      followInit.current = false
       view.azimuth = azimuth
       view.polar = polar
       distance.current = dist
@@ -246,8 +296,25 @@ export function WorldCameraRig() {
       mode === 'WORLD' ? collisionDistance(p, desiredCamera) : room ? roomCollisionDistance(p, desiredCamera) : distance.current
     if (cut) reach.current = clear
     else reach.current = clear < reach.current ? damp(reach.current, clear, 25, delta) : damp(reach.current, clear, 3, delta)
-    orbitPosition(p, view.azimuth, orbitPolar, Math.min(distance.current, reach.current), camera.position)
-    camera.position.y = Math.max(camera.position.y, minCameraHeight(camera.position.x, camera.position.z))
+    orbitPosition(p, view.azimuth, orbitPolar, Math.min(distance.current, reach.current), desiredCamera)
+    desiredCamera.y = Math.max(desiredCamera.y, minCameraHeight(desiredCamera.x, desiredCamera.z))
+    if (cut || !followInit.current) {
+      smoothCamera.copy(desiredCamera)
+      followInit.current = true
+    }
+    const camLag = reduced
+      ? 30
+      : view.dragging
+        ? 18
+        : cinematicWalk
+          ? WALK_CAMERA_LAG
+          : settling
+            ? 7.5
+            : 12
+    smoothCamera.x = damp(smoothCamera.x, desiredCamera.x, camLag, delta)
+    smoothCamera.y = damp(smoothCamera.y, desiredCamera.y, camLag, delta)
+    smoothCamera.z = damp(smoothCamera.z, desiredCamera.z, camLag, delta)
+    camera.position.copy(smoothCamera)
     camera.lookAt(p)
     camera.rotateX(tilt.current + lookUp)
 

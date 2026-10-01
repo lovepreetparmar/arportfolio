@@ -9,7 +9,8 @@ export type CharacterState =
   | 'pointing'
   | 'contact'
 
-export const WALK_SPEED = 2.72
+/** Relaxed outdoor stroll; kept in sync with in-place walk cycle playback (see `useLocomotionMixer`). */
+export const WALK_SPEED = 1.48
 
 /** Locomotion layer the controller runs, independent of the expressive `CharacterState`. */
 export type CharacterMotion = 'idle' | 'walking' | 'sitting' | 'standing' | 'enteringProject'

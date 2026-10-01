@@ -34,13 +34,7 @@ export function seatedArmWeight(amount: number) {
  * `amount` is the raw sit progress (0 standing → 1 seated); `seatedIdle` fades in the settled micro-motion.
  */
 export function applySittingPose(refs: CharacterRigRefs, amount: number, t: number, seatedIdle: number) {
-  if (amount <= 0) {
-    if (refs.leftKnee.current) refs.leftKnee.current.rotation.x = 0
-    if (refs.rightKnee.current) refs.rightKnee.current.rotation.x = 0
-    if (refs.leftHand.current) refs.leftHand.current.rotation.x = 0
-    if (refs.rightHand.current) refs.rightHand.current.rotation.x = 0
-    return
-  }
+  if (amount <= 0) return
 
   const body = smootherstep(amount)
   const arms = seatedArmWeight(amount)

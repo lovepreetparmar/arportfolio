@@ -1,10 +1,12 @@
 import { useGLTF } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
-import { useLayoutEffect, useMemo } from 'react'
+import { useEffect, useLayoutEffect, useState } from 'react'
 import * as THREE from 'three'
 import { useOptionalSitting } from '../world/benches/SittingContext'
+import { ANUSHRI_BONES } from './anushriBoneNames'
 import { CHARACTER_MODEL_URL } from './characterConfig'
 import { characterSignals } from './characterSignals'
+import { useLocomotionMixer } from './useLocomotionMixer'
 import { SEATED, seatedArmWeight } from './sittingPose'
 import type { CharacterRigRefs } from './useCharacterRefs'
 
@@ -302,7 +304,25 @@ function vertexWeights(x: number, y: number, tube: number, out: Float32Array) {
 }
 
 function buildSkeleton() {
-  const bones = Array.from({ length: BONE_COUNT }, () => new THREE.Bone())
+  const names = [
+    ANUSHRI_BONES.hips,
+    ANUSHRI_BONES.spine,
+    ANUSHRI_BONES.chest,
+    ANUSHRI_BONES.head,
+    ANUSHRI_BONES.leftArm,
+    ANUSHRI_BONES.leftForeArm,
+    ANUSHRI_BONES.rightArm,
+    ANUSHRI_BONES.rightForeArm,
+    ANUSHRI_BONES.leftUpLeg,
+    ANUSHRI_BONES.leftLeg,
+    ANUSHRI_BONES.rightUpLeg,
+    ANUSHRI_BONES.rightLeg,
+  ]
+  const bones = names.map((name) => {
+    const b = new THREE.Bone()
+    b.name = name
+    return b
+  })
   const place = (i: number, parent: number | null, x: number, y: number) => {
     bones[i].position.set(x, y, 0)
     if (parent !== null) bones[parent].add(bones[i])
@@ -669,34 +689,72 @@ const ARMS: [number, number, number][] = [
  * Photo-based character model, skinned at runtime and posed every frame from the procedural rig.
  * The rig keeps running as the animation driver with its meshes hidden, and stays visible if this fails to load.
  */
+type BuiltCharacter = { mesh: THREE.SkinnedMesh; bones: THREE.Bone[] }
+const headLook = new THREE.Quaternion()
+
 export function CharacterModel({ refs }: { refs: CharacterRigRefs }) {
   const { scene } = useGLTF(CHARACTER_MODEL_URL)
-  const { mesh, bones } = useMemo(() => createSkinnedCharacter(scene), [scene])
+  const [built, setBuilt] = useState<BuiltCharacter | null>(null)
   const sittingRef = useOptionalSitting()
+  useLocomotionMixer(built?.mesh ?? null)
+
+  useEffect(() => {
+    let cancelled = false
+    setBuilt(null)
+    const run = () => {
+      if (cancelled) return
+      try {
+        setBuilt(createSkinnedCharacter(scene))
+      } catch (err) {
+        console.error('[Character] Failed to build skinned mesh', err)
+      }
+    }
+    const id = window.setTimeout(run, 0)
+    return () => {
+      cancelled = true
+      window.clearTimeout(id)
+    }
+  }, [scene])
 
   useLayoutEffect(() => {
+    if (!built) return
     const rigBody = refs.hips.current
     if (rigBody) rigBody.visible = false
     characterSignals.modelReady = true
+    const { mesh } = built
     return () => {
       characterSignals.modelReady = false
       if (rigBody) rigBody.visible = true
       mesh.geometry.dispose()
       ;(mesh.material as THREE.Material).dispose()
     }
-  }, [refs, mesh])
+  }, [refs, built])
 
   useFrame(() => {
+    if (!built) return
+    const { mesh, bones } = built
     const root = refs.root.current
     const hips = refs.hips.current
     const chest = refs.chest.current
+    const head = refs.head.current
     if (!root || !hips || !chest) return
     mesh.position.copy(root.position)
-    for (const [bone, key] of ROTATION_SOURCES) {
-      const src = refs[key].current
-      if (src) bones[bone].rotation.copy(src.rotation)
+
+    const sitAmount = sittingRef?.current.amount ?? 0
+    const skeletal = characterSignals.locomotion === 'skeletal' && sitAmount < 0.04
+
+    if (!skeletal) {
+      mesh.rotation.y = 0
+      for (const [bone, key] of ROTATION_SOURCES) {
+        const src = refs[key].current
+        if (src) bones[bone].rotation.copy(src.rotation)
+      }
+    } else {
+      mesh.rotation.y = hips.rotation.y
+      if (head) bones[BONE.head].quaternion.multiply(headLook.setFromEuler(head.rotation))
     }
-    const arms = seatedArmWeight(sittingRef?.current.amount ?? 0)
+
+    const arms = seatedArmWeight(sitAmount)
     if (arms > 0) {
       for (const [upper, elbow, side] of ARMS) {
         bones[upper].rotation.x += (SEATED_ARMS.upperArm - SEATED.upperArm) * arms
@@ -704,11 +762,14 @@ export function CharacterModel({ refs }: { refs: CharacterRigRefs }) {
         bones[elbow].rotation.x += (SEATED_ARMS.elbow - SEATED.elbow) * arms
       }
     }
-    bones[BONE.hips].position.y = J.hips + (hips.position.y - RIG_HIPS_Y) * HIP_DROP
-    bones[BONE.chest].position.y = J.chest - J.hips + (chest.position.y - RIG_CHEST_Y) * RIG_SCALE
+    if (!skeletal) {
+      bones[BONE.hips].position.set(0, J.hips + (hips.position.y - RIG_HIPS_Y) * HIP_DROP, 0)
+      bones[BONE.chest].position.y = J.chest - J.hips + (chest.position.y - RIG_CHEST_Y) * RIG_SCALE
+    }
   })
 
-  return <primitive object={mesh} />
+  if (!built) return null
+  return <primitive object={built.mesh} />
 }
 
 useGLTF.preload(CHARACTER_MODEL_URL)

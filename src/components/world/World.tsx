@@ -3,6 +3,7 @@ import { memo, Suspense } from 'react'
 import * as THREE from 'three'
 import { projects } from '../../data/projects'
 import { Character } from '../character/Character'
+import { CharacterLocomotionDebug } from '../character/CharacterLocomotionDebug'
 import { WorldCameraRig } from './WorldCameraRig'
 import { WorldEnvironment } from './WorldEnvironment'
 import { WorldGround } from './WorldGround'
@@ -78,7 +79,9 @@ function WorldScene({ onSelectProject }: WorldProps) {
       <WorldProximity />
       <SittingDirector />
       <WorldBenches />
-      <Character />
+      <Suspense fallback={null}>
+        <Character />
+      </Suspense>
       <Ambience />
       <WorldLocations onSelect={onSelectProject} />
       {projects.map((p) => (
@@ -107,6 +110,7 @@ export function World({ onSelectProject }: WorldProps) {
           backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")`,
         }}
       />
+      <CharacterLocomotionDebug />
       <Canvas
         shadows
         dpr={[1, 1.75]}
@@ -121,11 +125,9 @@ export function World({ onSelectProject }: WorldProps) {
           gl.toneMapping = THREE.NeutralToneMapping
         }}
       >
-        <Suspense fallback={null}>
-          <SittingProvider>
-            <WorldScene onSelectProject={onSelectProject} />
-          </SittingProvider>
-        </Suspense>
+        <SittingProvider>
+          <WorldScene onSelectProject={onSelectProject} />
+        </SittingProvider>
       </Canvas>
     </div>
   )

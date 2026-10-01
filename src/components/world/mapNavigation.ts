@@ -78,6 +78,8 @@ type MapViewState = {
    * 0 once it is over or the visitor takes the camera.
    */
   revealStart: number
+  /** performance.now() when the visitor last orbited, panned, or zoomed manually. */
+  lastManualAt: number
 }
 
 /** Shared per-frame camera state (single world canvas). */
@@ -100,7 +102,11 @@ export const mapView: MapViewState = {
   spinAzimuth: 0,
   spinPolar: 0,
   revealStart: 0,
+  lastManualAt: 0,
 }
+
+/** After manual orbit/pan/zoom, auto-framing eases back over this many seconds. */
+export const MANUAL_CONTROL_RESUME_SEC = 3.2
 
 /** Opening shot: close behind her and low, then easing out to the default view over REVEAL_SECONDS. */
 export const REVEAL_SECONDS = 3.4
@@ -133,6 +139,7 @@ export function revealProgress(now: number) {
 
 /** The visitor took the camera: any reveal or flick stops where it is. */
 export function takeCameraControl() {
+  mapView.lastManualAt = performance.now()
   if (mapView.revealStart) {
     mapView.revealStart = 0
     mapView.targetZoom = mapView.zoom
@@ -140,6 +147,15 @@ export function takeCameraControl() {
     mapView.targetAzimuth = mapView.azimuth
   }
   mapView.spinAzimuth = mapView.spinPolar = 0
+}
+
+/** 0 = visitor is steering; 1 = full automatic framing may resume. */
+export function manualControlBlend(now: number) {
+  if (mapView.dragging) return 0
+  const age = (now - mapView.lastManualAt) / 1000
+  if (age <= 0) return 0
+  const t = Math.min(1, age / MANUAL_CONTROL_RESUME_SEC)
+  return t * t * (3 - 2 * t)
 }
 
 export function clampZoom(z: number) {

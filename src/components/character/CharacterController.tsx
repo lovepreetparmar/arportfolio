@@ -17,7 +17,6 @@ import {
   resolveCharacterMotion,
   resolveCharacterState,
   updateBlink,
-  walkPhaseAdvance,
   type BlinkState,
   type CharacterMotion,
   type CharacterState,
@@ -26,6 +25,7 @@ import { butterflySignals } from './butterflySignals'
 import { characterContext, resolveCharacterContext } from './characterContext'
 import { characterSignals } from './characterSignals'
 import { applySittingPose } from './sittingPose'
+import { advanceWalkPhase, applyWalkPose } from './walkPose'
 import type { CharacterRigRefs } from './useCharacterRefs'
 
 /** Equivalent of `target` within ±π of `current`, so damped turns take the short way round. */
@@ -149,8 +149,14 @@ export function CharacterController({ refs }: { refs: CharacterRigRefs }) {
     else setMoving(false)
 
     const stride = speed.current / WALK_SPEED
-    gait.current = reduced ? (isWalking ? 1 : 0) : damp(gait.current, isWalking ? Math.max(stride, 0.45) : 0, 9, delta)
-    if (gait.current > 0.01) walkPhase.current = walkPhaseAdvance(walkPhase.current, delta * (0.5 + 0.5 * stride))
+    gait.current = reduced
+      ? isWalking ? 1 : 0
+      : damp(gait.current, isWalking ? Math.max(stride, 0.22) : 0, isWalking ? 7.5 : 6.5, delta)
+    if (characterSignals.locomotion !== 'skeletal' && gait.current > 0.01) {
+      walkPhase.current = advanceWalkPhase(walkPhase.current, speed.current, delta)
+    } else if (characterSignals.locomotion === 'skeletal') {
+      walkPhase.current = characterSignals.walkPhase
+    }
 
     const motion: CharacterMotion = resolveCharacterMotion(isWalking, sit?.phase ?? 'none', journeyPhase)
     const sitAmount = sit?.amount ?? 0
@@ -160,6 +166,8 @@ export function CharacterController({ refs }: { refs: CharacterRigRefs }) {
     refs.root.current.position.set(rootX, 0, rootZ)
     characterSignals.present = true
     characterSignals.walking = isWalking
+    characterSignals.gait = gait.current
+    characterSignals.speed = speed.current
     characterSignals.walkPhase = walkPhase.current
     characterSignals.x = rootX
     characterSignals.z = rootZ
@@ -209,8 +217,10 @@ export function CharacterController({ refs }: { refs: CharacterRigRefs }) {
     } else if (inRoom && roomView.faceYaw !== null) {
       targetYaw = nearestAngle(bodyYaw.current, roomView.faceYaw)
     }
-    const turned = dampAngle(bodyYaw.current, targetYaw, reduced && holding ? 30 : turnRate, delta)
-    const maxTurn = reduced ? Infinity : MAX_TURN_RATE * delta
+    const turnLambda =
+      heading && dist < 2.2 ? Math.min(turnRate, 6.5) : turnRate
+    const turned = dampAngle(bodyYaw.current, targetYaw, reduced && holding ? 30 : turnLambda, delta)
+    const maxTurn = reduced ? Infinity : (dist < 1.5 ? MAX_TURN_RATE * 0.72 : MAX_TURN_RATE) * delta
     bodyYaw.current += THREE.MathUtils.clamp(turned - bodyYaw.current, -maxTurn, maxTurn)
     refs.hips.current.rotation.y = bodyYaw.current
     if (sit) sit.bodyYaw = bodyYaw.current
@@ -225,19 +235,42 @@ export function CharacterController({ refs }: { refs: CharacterRigRefs }) {
     refs.chest.current.position.y = 0.38 + breathe
     refs.chest.current.rotation.z = sway * 0.35 - weightShift * 0.7
     refs.spine.current!.rotation.x = breathe * 0.35
-    refs.hips.current.rotation.z = weightShift
+    if (g < 0.01) {
+      refs.hips.current.position.y = 0.82
+      refs.hips.current.rotation.x = 0
+      refs.hips.current.rotation.z = weightShift
+      if (refs.spine.current) refs.spine.current.rotation.y = 0
+      if (refs.chest.current) refs.chest.current.rotation.y = 0
+      if (refs.leftShoulder.current) refs.leftShoulder.current.rotation.z = 0
+      if (refs.rightShoulder.current) refs.rightShoulder.current.rotation.z = 0
+    } else {
+      refs.hips.current.rotation.z = weightShift * (1 - g) + Math.sin(walkPhase.current) * 0.024 * g
+    }
 
-    const swing = Math.sin(walkPhase.current) * 0.55 * g
-    const bounce = Math.abs(Math.sin(walkPhase.current)) * 0.045 * g
-    refs.hips.current.position.y = 0.82 + bounce
+    if (g < 0.01) {
+      if (refs.leftLeg.current) refs.leftLeg.current.rotation.x = 0
+      if (refs.rightLeg.current) refs.rightLeg.current.rotation.x = 0
+      if (refs.leftLeg.current) refs.leftLeg.current.rotation.z = 0
+      if (refs.rightLeg.current) refs.rightLeg.current.rotation.z = 0
+      if (refs.leftKnee.current) refs.leftKnee.current.rotation.x = 0
+      if (refs.rightKnee.current) refs.rightKnee.current.rotation.x = 0
+      if (refs.leftArm.current) refs.leftArm.current.rotation.x = 0
+      if (refs.rightArm.current) refs.rightArm.current.rotation.x = 0
+      if (refs.leftHand.current) refs.leftHand.current.rotation.x = 0
+      if (refs.rightHand.current) refs.rightHand.current.rotation.x = 0
+    }
 
-    if (refs.leftLeg.current) refs.leftLeg.current.rotation.x = swing
-    if (refs.rightLeg.current) refs.rightLeg.current.rotation.x = -swing
-    if (refs.leftArm.current) refs.leftArm.current.rotation.x = -swing * 0.55
-    if (refs.rightArm.current) refs.rightArm.current.rotation.x = swing * 0.55
+    if (characterSignals.locomotion !== 'skeletal' || (sittingRef?.current.amount ?? 0) > 0.04) {
+      applyWalkPose(refs, walkPhase.current, g)
+    } else if (g < 0.01) {
+      if (refs.leftLeg.current) refs.leftLeg.current.rotation.x = 0
+      if (refs.rightLeg.current) refs.rightLeg.current.rotation.x = 0
+      if (refs.leftKnee.current) refs.leftKnee.current.rotation.x = 0
+      if (refs.rightKnee.current) refs.rightKnee.current.rotation.x = 0
+    }
 
     pointing.current = damp(pointing.current, stateRef.current === 'pointing' ? 1 : 0, reduced ? 30 : 5, delta)
-    if (refs.rightArm.current) {
+    if (refs.rightArm.current && pointing.current > 0.01) {
       refs.rightArm.current.rotation.x = THREE.MathUtils.lerp(refs.rightArm.current.rotation.x, -0.85, pointing.current)
       refs.rightArm.current.rotation.z = 0.15 * pointing.current
     }

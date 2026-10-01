@@ -1,21 +1,27 @@
+import { useFrame } from '@react-three/fiber'
 import { useMemo } from 'react'
 import * as THREE from 'three'
+import { useReducedMotion } from '../../../hooks/useMediaQuery'
 import { getProjectBySlug } from '../../../data/projects'
 import { getProjectEntrance } from '../../../data/projectWorld'
 import { getWorldScenery, type TreeSpot } from '../../../data/worldScenery'
 import { StreetLamp, StreetLampLights } from '../daynight/StreetLamps'
 import { createSignTexture, CYPRESS_TONES, FLOWER_COLORS, LEAF_FAMILIES, WORLD_PALETTE, worldMat } from '../worldMaterials'
 import { InstancedParts, type InstanceItem } from './InstancedParts'
+import { AmbientMotes } from './AmbientMotes'
+import { Butterflies } from './Butterflies'
+import { WorldPond } from './WorldPond'
+import { applyWind, windUniforms } from './wind'
 
 const sphereGeo = new THREE.SphereGeometry(1, 18, 14)
 const trunkGeo = new THREE.CylinderGeometry(0.06, 0.09, 1, 8)
 const stoneGeo = new THREE.DodecahedronGeometry(0.18, 0)
 const tuftGeo = new THREE.ConeGeometry(0.022, 0.3, 4)
 const flowerGeo = new THREE.SphereGeometry(0.055, 8, 6)
-const whiteMat = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.92 })
+const whiteMat = applyWind(new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.92 }), 'blade', 0.07)
 const barkMat = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.95 })
-const leafMat = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.78 })
-const petalMat = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.7 })
+const leafMat = applyWind(new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.78 }), 'canopy', 0.04)
+const petalMat = applyWind(new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.7 }), 'head', 0.014)
 const stoneMat = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.95, flatShading: true })
 
 const DEEP = 0
@@ -53,7 +59,8 @@ function treeParts(trees: TreeSpot[]) {
 }
 
 const SIGNPOST_SLUGS = ['food-creatives', 'roshan-shah', 'brand-identity']
-const SIGNPOST_POS = { x: 1.72, z: -0.8 }
+/** At the plaza's edge, clear of the landmark and between the north-east paths. */
+const SIGNPOST_POS = { x: 2.42, z: -1.05 }
 
 function Signpost() {
   const boards = useMemo(
@@ -102,6 +109,16 @@ function Signpost() {
   )
 }
 
+/** Advances the shared breeze; it falls still under reduced motion. */
+function WindClock() {
+  const reduced = useReducedMotion()
+  useFrame((state) => {
+    windUniforms.uWindTime.value = state.clock.elapsedTime
+    windUniforms.uWindStrength.value = reduced ? 0 : 1
+  })
+  return null
+}
+
 export function WorldScenery() {
   const { trees, stones, tufts, flowers, lamps } = getWorldScenery()
 
@@ -140,6 +157,9 @@ export function WorldScenery() {
 
   return (
     <group>
+      <WindClock />
+      <AmbientMotes />
+      <Butterflies />
       <InstancedParts geometry={trunkGeo} material={barkMat} items={trunks} castShadow />
       <InstancedParts geometry={sphereGeo} material={leafMat} items={canopy} castShadow receiveShadow />
       <InstancedParts geometry={stoneGeo} material={stoneMat} items={stoneItems} castShadow receiveShadow />
@@ -150,6 +170,7 @@ export function WorldScenery() {
       ))}
       <StreetLampLights lamps={lamps} />
       <Signpost />
+      <WorldPond />
     </group>
   )
 }

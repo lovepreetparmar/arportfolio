@@ -2,9 +2,10 @@ import { useMemo } from 'react'
 import type { Project } from '../../../data/projects'
 import type { ProjectWorldConfig } from '../../../data/projectWorld'
 import { ARCHETYPE_FOOTPRINT, type PavilionStyle, type PavilionTone } from '../../../data/worldLayout'
-import { WindowSpill } from '../daynight/BuildingLighting'
+import { LightPool, WindowSpill } from '../daynight/BuildingLighting'
+import { lampGlassMaterial } from '../daynight/nightLighting'
 import { WORLD_PALETTE, worldMat } from '../worldMaterials'
-import { Door, EaselPoster, EntranceApron, GableRoof, Planter, SignBoard, signName, Window } from './BuildingKit'
+import { Door, EaselPoster, EntranceApron, GableRoof, Planter, ProjectPoster, SignBoard, signName, Window } from './BuildingKit'
 
 const { width: W, depth: D } = ARCHETYPE_FOOTPRINT.pavilion
 const H = 2.5
@@ -53,6 +54,7 @@ export function ProjectPavilion({
 }) {
   const s = TONES[tone ?? DEFAULT_TONE[style]]
   const flat = style === 'stone'
+  const gallery = config.room.displayStyle === 'gallery'
   const signStyle = useMemo(
     () => ({
       background: WORLD_PALETTE.ivory,
@@ -106,7 +108,7 @@ export function ProjectPavilion({
         </>
       )}
 
-      {[-1.18, 1.18].map((x) => (
+      {(gallery ? [-1.18] : [-1.18, 1.18]).map((x) => (
         <Window
           key={x}
           width={0.7}
@@ -117,13 +119,104 @@ export function ProjectPavilion({
           sill={s.base}
         />
       ))}
-      {[-1.18, 1.18].map((x) => (
+      {(gallery ? [-1.18] : [-1.18, 1.18]).map((x) => (
         <WindowSpill key={x} x={x} z={FZ} width={0.7} strength={0.22} />
       ))}
       <Door width={0.88} height={2} z={FZ} color={s.door} frameColor={s.frame} />
       <Planter position={[-1.3, 0, FZ + 0.35]} pot={s.pot} kind="bush" scale={0.85} />
-      {project.images[0] && <EaselPoster src={project.images[0]} position={[1.4, 0, FZ + 0.9]} rotationY={-0.3} />}
+      {project.images[0] &&
+        (gallery ? (
+          <HungPrint src={project.images[0]} />
+        ) : (
+          <EaselPoster src={project.images[0]} position={[1.4, 0, FZ + 0.9]} rotationY={-0.3} />
+        ))}
       <EntranceApron width={1.8} z={FZ} depth={1.2} color="#e1d6c4" mat={s.door} />
+
+      {config.room.displayStyle === 'digital' && <DoorCanopy color={s.frame} edge={project.accent ?? s.door} />}
+      {(config.room.displayStyle === 'neutral' || config.room.displayStyle === 'studio') && (
+        <BladeSign number={project.number} board={s.frame === TRIM ? TRIM : WORLD_PALETTE.ivory} ink={s.door} />
+      )}
+    </group>
+  )
+}
+
+/** Galleries hang the cover on the facade, where the second window would be, under a picture light. */
+function HungPrint({ src }: { src: string }) {
+  const metal = worldMat(WORLD_PALETTE.charcoal, 0.5, 0.3)
+  const glass = lampGlassMaterial('#ffd7a0', 1.6, 0.08)
+  const x = 1.16
+  return (
+    <group>
+      <ProjectPoster src={src} width={0.86} maxHeight={1.12} position={[x, 1.4, FZ + 0.025]} frameColor={WORLD_PALETTE.ivory} />
+      <group position={[x, 2.2, FZ]}>
+        <mesh position={[0, 0, 0.09]} material={metal}>
+          <boxGeometry args={[0.025, 0.025, 0.18]} />
+        </mesh>
+        <mesh position={[0, -0.02, 0.18]} material={metal}>
+          <boxGeometry args={[0.46, 0.05, 0.06]} />
+        </mesh>
+        <mesh position={[0, -0.047, 0.18]} material={glass}>
+          <boxGeometry args={[0.42, 0.006, 0.04]} />
+        </mesh>
+      </group>
+      <LightPool position={[x, 0.03, FZ + 0.55]} size={[1.1, 1.1]} strength={0.24} />
+    </group>
+  )
+}
+
+/** Digital studios: a crisp flat canopy over the door with a thin coloured edge. */
+function DoorCanopy({ color, edge }: { color: string; edge: string }) {
+  const depth = 0.62
+  const rise = 0.1
+  const reach = depth * 0.9
+  const rod = worldMat(WORLD_PALETTE.charcoal, 0.5, 0.3)
+  return (
+    <group position={[0, 2.4, FZ]}>
+      <mesh position={[0, 0, depth / 2]} material={worldMat(color, 0.6)} castShadow>
+        <boxGeometry args={[1.36, 0.05, depth]} />
+      </mesh>
+      <mesh position={[0, 0, depth + 0.006]} material={worldMat(edge, 0.6)}>
+        <boxGeometry args={[1.36, 0.06, 0.014]} />
+      </mesh>
+      {[-0.6, 0.6].map((x) => (
+        <mesh key={x} position={[x, rise / 2 + 0.025, reach / 2]} rotation={[Math.atan2(rise, reach), 0, 0]} material={rod}>
+          <boxGeometry args={[0.012, 0.012, Math.hypot(rise, reach)]} />
+        </mesh>
+      ))}
+    </group>
+  )
+}
+
+/** Branding studios: a small hanging blade sign carrying the project number, shopfront style. */
+function BladeSign({ number, board, ink }: { number: string; board: string; ink: string }) {
+  const metal = worldMat(WORLD_PALETTE.charcoal, 0.5, 0.3)
+  const style = useMemo(() => ({ background: board, color: ink, serif: true }), [board, ink])
+  return (
+    <group position={[-0.68, 2.3, FZ]}>
+      <mesh position={[0, 0, 0.3]} material={metal}>
+        <boxGeometry args={[0.018, 0.018, 0.6]} />
+      </mesh>
+      <mesh position={[0, 0, 0.012]} material={metal}>
+        <boxGeometry args={[0.07, 0.1, 0.024]} />
+      </mesh>
+      {[0.14, 0.46].map((z) => (
+        <mesh key={z} position={[0, -0.04, z]} material={metal}>
+          <boxGeometry args={[0.006, 0.08, 0.006]} />
+        </mesh>
+      ))}
+      {[1, -1].map((side) => (
+        <SignBoard
+          key={side}
+          text={number}
+          width={0.42}
+          height={0.36}
+          position={[0, -0.26, 0.3]}
+          rotation={[0, (side * Math.PI) / 2, 0]}
+          style={style}
+          depth={0.03}
+          nightGlow={0.35}
+        />
+      ))}
     </group>
   )
 }

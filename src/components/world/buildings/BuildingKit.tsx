@@ -3,6 +3,7 @@ import { useFrame } from '@react-three/fiber'
 import { createContext, useContext, useMemo, useRef, type MutableRefObject } from 'react'
 import * as THREE from 'three'
 import { EntranceLight, useSignLightMaterial, type EntranceLightStyle } from '../daynight/BuildingLighting'
+import { applyWind } from '../environment/wind'
 import { createSignTexture, glowMat, WORLD_PALETTE, worldMat, type SignStyle } from '../worldMaterials'
 
 type Vec3 = [number, number, number]
@@ -281,10 +282,22 @@ type PlanterProps = {
   scale?: number
 }
 
+const leafCache = new Map<string, THREE.MeshStandardMaterial>()
+
+/** Planter foliage that moves with the breeze. */
+function swayingLeaf(color: string) {
+  let m = leafCache.get(color)
+  if (!m) {
+    m = applyWind(new THREE.MeshStandardMaterial({ color, roughness: 0.9 }), 'bush', 0.025)
+    leafCache.set(color, m)
+  }
+  return m
+}
+
 export function Planter({ position, pot, kind, scale = 1 }: PlanterProps) {
   const potMat = worldMat(pot, 0.85)
-  const leaf = worldMat(WORLD_PALETTE.leafDeep, 0.9)
-  const leafLight = worldMat(WORLD_PALETTE.leaf, 0.9)
+  const leaf = swayingLeaf(WORLD_PALETTE.leafDeep)
+  const leafLight = swayingLeaf(WORLD_PALETTE.leaf)
   return (
     <group position={position} scale={scale}>
       {kind === 'herbs' ? (

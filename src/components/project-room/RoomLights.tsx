@@ -2,8 +2,7 @@ import { useFrame } from '@react-three/fiber'
 import { useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { useWorldState } from '../../context/WorldStateContext'
-import { getProjectBySlug } from '../../data/projects'
-import { getProjectWorldConfig } from '../../data/projectWorld'
+import { getPlaceRoomTheme } from '../../data/worldLocations'
 import { damp } from '../character/CharacterAnimations'
 import { dayNight } from '../world/daynight/DayNightController'
 import { ROOM_DEPTH, ROOM_HEIGHT, ROOM_ORIGIN, ROOM_WIDTH } from './roomSpace'
@@ -40,10 +39,9 @@ export function RoomLights() {
     o.position.set(...at(s.target))
     return o
   }), [])
-  const project = roomProjectSlug ? getProjectBySlug(roomProjectSlug) : undefined
   const lightColor = useMemo(
-    () => new THREE.Color(project ? getProjectWorldConfig(project).room.lightColor : '#fff2e0'),
-    [project],
+    () => new THREE.Color(getPlaceRoomTheme(roomProjectSlug)?.lightColor ?? '#fff2e0'),
+    [roomProjectSlug],
   )
   const color = useMemo(() => new THREE.Color(), [])
 

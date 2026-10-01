@@ -42,7 +42,7 @@ class AudioManager {
   private project = new ProjectAudio()
 
   /** Latest reported state, applied whenever sound is (re)enabled. */
-  private mix = { day: 1, night: 0, world: 1, room: 0 }
+  private mix = { day: 1, night: 0, world: 1, room: 0, shelter: 0, viewpoint: 0 }
   private roomPreset: RoomPreset | null = null
 
   get isEnabled() {
@@ -111,6 +111,7 @@ class AudioManager {
     if (!this.enabled) return
     this.ambient.start(graph.ctx, graph.world)
     this.ambient.setMix(this.mix.day, this.mix.night)
+    this.ambient.setPlace(this.mix.shelter, this.mix.viewpoint)
     this.project.setPreset(this.roomPreset)
     glide(graph.world.gain, this.mix.world, graph.ctx, 0.1)
     glide(graph.room.gain, this.mix.room, graph.ctx, 0.1)
@@ -143,6 +144,15 @@ class AudioManager {
     this.mix.day = day
     this.mix.night = night
     if (this.enabled) this.ambient.setMix(day, night)
+  }
+
+  /** Place-dependent ambience: near a studio door, or at the sky viewpoint (each 0–1). */
+  setPlace(shelter: number, viewpoint: number) {
+    const q = (v: number) => Math.round(v * 20) / 20
+    if (q(shelter) === this.mix.shelter && q(viewpoint) === this.mix.viewpoint) return
+    this.mix.shelter = q(shelter)
+    this.mix.viewpoint = q(viewpoint)
+    if (this.enabled) this.ambient.setPlace(this.mix.shelter, this.mix.viewpoint)
   }
 
   /** Outdoor vs room levels for going in and out of a project. */

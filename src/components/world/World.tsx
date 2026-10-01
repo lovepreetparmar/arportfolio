@@ -1,13 +1,13 @@
 import { Canvas } from '@react-three/fiber'
-import { Suspense } from 'react'
+import { memo, Suspense } from 'react'
+import * as THREE from 'three'
 import { projects } from '../../data/projects'
 import { Character } from '../character/Character'
-import { ContactSign } from './ContactSign'
 import { WorldCameraRig } from './WorldCameraRig'
 import { WorldEnvironment } from './WorldEnvironment'
 import { WorldGround } from './WorldGround'
 import { WorldProximity } from './WorldProximity'
-import { AboutSign } from './AboutSign'
+import { WorldLocations } from './locations/WorldLocations'
 import { characterSpawn } from '../../data/world3d'
 import { WorldJourneyBridge } from './WorldJourneyBridge'
 import { WorldKeyboardControls } from './WorldKeyboardControls'
@@ -23,23 +23,54 @@ import { AudioSceneBridge } from '../../audio/AudioSceneBridge'
 import { CharacterNightLight } from './daynight/CharacterNightLight'
 import { NightSky } from './daynight/NightSky'
 import { ProjectRoom } from '../project-room/ProjectRoom'
+import { AboutRoom } from '../project-room/studio/AboutRoom'
+import { ContactRoom } from '../project-room/studio/ContactRoom'
 import { RoomLights } from '../project-room/RoomLights'
 
 type WorldProps = {
   onSelectProject: (slug: string) => void
 }
 
+/*
+ * World state changes on every step she takes, so anything that does not read it sits behind a
+ * memo boundary and is not re-rendered while she walks.
+ */
+const Sky = memo(function Sky() {
+  return (
+    <>
+      <WorldEnvironment />
+      <NightSky />
+    </>
+  )
+})
+
+const Landscape = memo(function Landscape() {
+  return (
+    <>
+      <WorldTerrain />
+      <WorldPaths />
+      <WorldScenery />
+    </>
+  )
+})
+
+const Ambience = memo(function Ambience() {
+  return (
+    <>
+      <CharacterNightLight />
+      <AudioSceneBridge />
+    </>
+  )
+})
+
 function WorldScene({ onSelectProject }: WorldProps) {
   const { insideRoom, roomProjectSlug } = useWorldState()
 
   return (
     <>
-      <WorldEnvironment />
-      <NightSky />
+      <Sky />
       <WorldGround />
-      <WorldTerrain />
-      <WorldPaths />
-      <WorldScenery />
+      <Landscape />
       <WorldCameraRig />
       <WorldMapControls />
       <WorldJourneyBridge />
@@ -48,17 +79,22 @@ function WorldScene({ onSelectProject }: WorldProps) {
       <SittingDirector />
       <WorldBenches />
       <Character />
-      <CharacterNightLight />
-      <AudioSceneBridge />
-      <AboutSign />
-      <ContactSign />
+      <Ambience />
+      <WorldLocations onSelect={onSelectProject} />
       {projects.map((p) => (
         <ProjectLocation key={p.slug} project={p} onSelect={onSelectProject} />
       ))}
       <RoomLights />
-      {insideRoom && roomProjectSlug && <ProjectRoom key={roomProjectSlug} slug={roomProjectSlug} />}
+      {insideRoom && roomProjectSlug && <PlaceRoom key={roomProjectSlug} id={roomProjectSlug} />}
     </>
   )
+}
+
+/** The interior for a project or a studio, built in the shared room space. */
+function PlaceRoom({ id }: { id: string }) {
+  if (id === 'about') return <AboutRoom />
+  if (id === 'contact') return <ContactRoom />
+  return <ProjectRoom slug={id} />
 }
 
 export function World({ onSelectProject }: WorldProps) {
@@ -81,6 +117,9 @@ export function World({ onSelectProject }: WorldProps) {
           far: 140,
         }}
         gl={{ antialias: true, alpha: false }}
+        onCreated={({ gl }) => {
+          gl.toneMapping = THREE.NeutralToneMapping
+        }}
       >
         <Suspense fallback={null}>
           <SittingProvider>

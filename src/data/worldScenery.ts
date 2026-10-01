@@ -1,6 +1,14 @@
-import { distanceToBenches, getWorldBenches } from './worldBenches'
-import { distanceToPaths, getPathBranches } from './worldPaths'
+import { distanceToBenches as distanceToAnyBench, getPathBenches } from './worldBenches'
+import { distanceToPaths as distanceToAnyPath, getPathBranches } from './worldPaths'
+import { locationToWorld, STUDIO_LOCATIONS, VIEWPOINT, WORLD_LOCATIONS } from './worldLocations'
 import { ARCHETYPE_FOOTPRINT, PLAZA_RADIUS, WORLD_HUB, worldProjectSlots } from './worldLayout'
+
+/**
+ * The seeded scatter below is laid out against the project paths and benches only, so places added
+ * later never reshuffle it; they clear their own ground from the finished layout afterwards.
+ */
+const distanceToPaths = (p: { x: number; z: number }) => distanceToAnyPath(p, 'project')
+const distanceToBenches = (x: number, z: number) => distanceToAnyBench(x, z, getPathBenches())
 
 export type TreeKind = 'round' | 'cypress' | 'shrub'
 
@@ -10,6 +18,9 @@ export type PatchSpot = { x: number; z: number; radius: number; rot: number; see
 export type SmallSpot = { x: number; z: number; scale: number; tint: number }
 export type PropSpot = { x: number; z: number; rot: number }
 export type HillSpot = { x: number; z: number; rx: number; ry: number; rz: number; tint: number }
+
+/** A small pond in the open meadow east of the plaza, between two paths. */
+export const WORLD_POND = { x: 9.5, z: 1.5, radius: 1.3 }
 
 function mulberry32(seed: number) {
   return () => {
@@ -88,7 +99,7 @@ function build() {
   }
 
   // A shade tree and a shrub behind each scenic bench.
-  for (const b of getWorldBenches()) {
+  for (const b of getPathBenches()) {
     if (!b.scenic) continue
     const fx = Math.sin(b.rot)
     const fz = Math.cos(b.rot)
@@ -147,7 +158,7 @@ function build() {
   }
 
   // Stones: some edging the paths, some resting in the grass.
-  for (const b of getPathBranches()) {
+  for (const b of getPathBranches('project')) {
     for (let i = 6; i < b.render.length - 6; i += 9) {
       if (rand() > 0.42) continue
       const p = b.render[i]
@@ -190,25 +201,95 @@ function build() {
   }
 
   const lamps: PropSpot[] = []
-  for (const b of getPathBranches()) {
-    const pts = b.render
-    for (let i = 22; i < pts.length - 10; i += 26) {
-      const p = pts[i]
-      const q = pts[i + 1]
-      const tx = q.x - p.x
-      const tz = q.z - p.z
-      const len = Math.hypot(tx, tz) || 1
-      const side = (i / 26) % 2 ? 1 : -1
-      const x = p.x + (-tz / len) * 0.95 * side
-      const z = p.z + (tx / len) * 0.95 * side
-      if (distanceToPaths({ x, z }) < 0.8) continue
-      if (lamps.some((l) => Math.hypot(l.x - x, l.z - z) < 3) || distanceToBenches(x, z) < 1.4) continue
-      if (!clearOfBuildings(x, z, 0.3, 0.8)) continue
-      lamps.push({ x, z, rot: 0 })
+  const lampsAlong = (scope: 'project' | 'location', clear: (x: number, z: number) => boolean) => {
+    for (const b of getPathBranches(scope)) {
+      const pts = b.render
+      for (let i = 22; i < pts.length - 10; i += 26) {
+        const p = pts[i]
+        const q = pts[i + 1]
+        const tx = q.x - p.x
+        const tz = q.z - p.z
+        const len = Math.hypot(tx, tz) || 1
+        const side = (i / 26) % 2 ? 1 : -1
+        const x = p.x + (-tz / len) * 0.95 * side
+        const z = p.z + (tx / len) * 0.95 * side
+        if (!clear(x, z)) continue
+        if (lamps.some((l) => Math.hypot(l.x - x, l.z - z) < 3)) continue
+        lamps.push({ x, z, rot: 0 })
+      }
     }
   }
+  lampsAlong('project', (x, z) => distanceToPaths({ x, z }) >= 0.8 && distanceToBenches(x, z) >= 1.4 && clearOfBuildings(x, z, 0.3, 0.8))
+  const projectLamps = lamps.length
+  lampsAlong(
+    'location',
+    (x, z) =>
+      distanceToAnyPath({ x, z }) >= 0.8 &&
+      distanceToAnyBench(x, z) >= 1.4 &&
+      clearOfBuildings(x, z, 0.3, 0.8) &&
+      clearOfLocations(x, z, 0.3, 0.8) &&
+      clearOfPlaza(x, z, 0.4),
+  )
 
-  return { trees, stones, patches, tufts, flowers, hills, lamps }
+  // Cleared afterwards rather than during placement, so the rest of the seeded layout is unchanged.
+  const offPond = (p: { x: number; z: number }) => Math.hypot(p.x - WORLD_POND.x, p.z - WORLD_POND.z) > WORLD_POND.radius + 0.55
+  const clearOf = (pathClear: number, margin: number, front = margin + 1.6) => (p: { x: number; z: number }) =>
+    offPond(p) && distanceToAnyPath(p, 'location') >= pathClear && clearOfLocations(p.x, p.z, margin, front)
+  // Crowns stand well clear of a studio front, so its facade reads from the path.
+  const treeClear = (t: TreeSpot) =>
+    t.kind === 'shrub'
+      ? clearOf(1.05, 0.9, 3.2)(t)
+      : clearOf(1.7, 1.1, 4.2)(t) && viewpointSightline(t)
+  return {
+    trees: [...trees.filter(treeClear), ...viewpointPlanting()],
+    stones: stones.filter(clearOf(0.72, 0.3)),
+    patches,
+    tufts: tufts.filter(clearOf(0.6, 0.1)),
+    flowers: flowers.filter(clearOf(0.6, 0.1)),
+    hills,
+    lamps: [...lamps.slice(0, projectLamps).filter(clearOf(0.8, 0.3)), ...lamps.slice(projectLamps)],
+  }
+}
+
+/** Outside the studios (with extra room at their fronts) and the viewpoint clearing. */
+function clearOfLocations(x: number, z: number, margin: number, frontMargin = margin + 2): boolean {
+  for (const l of STUDIO_LOCATIONS) {
+    const fp = l.footprint!
+    const dx = x - l.position.x
+    const dz = z - l.position.z
+    const cos = Math.cos(l.rotation)
+    const sin = Math.sin(l.rotation)
+    const lx = dx * cos - dz * sin
+    const lz = dx * sin + dz * cos
+    const front = lz > 0 ? frontMargin : margin
+    if (Math.abs(lx) < fp.width / 2 + margin && lz < fp.depth / 2 + front && lz > -fp.depth / 2 - margin) return false
+  }
+  for (const l of WORLD_LOCATIONS) {
+    if (l.type === 'viewpoint' && Math.hypot(x - l.position.x, z - l.position.z) < (l.radius ?? 0) + margin) return false
+  }
+  return true
+}
+
+/** Trees never stand in the view from the viewpoint bench back over the town. */
+function viewpointSightline(p: { x: number; z: number }) {
+  const dx = p.x - VIEWPOINT.position.x
+  const dz = p.z - VIEWPOINT.position.z
+  const d = Math.hypot(dx, dz)
+  if (d > 11) return true
+  const ahead = (dx * Math.sin(VIEWPOINT.rotation) + dz * Math.cos(VIEWPOINT.rotation)) / (d || 1)
+  return ahead < Math.cos(0.75)
+}
+
+/** Low planting around the viewpoint bench; nothing tall behind it, so the sky overhead stays open. */
+function viewpointPlanting(): TreeSpot[] {
+  const at = (lx: number, lz: number) => locationToWorld(VIEWPOINT, lx, lz)
+  const spots: [number, number, TreeKind, number, number][] = [
+    [-1.1, -1.5, 'shrub', 0.65, 1],
+    [1.6, -1.1, 'shrub', 0.85, 0],
+    [-1.75, -0.35, 'shrub', 0.7, 2],
+    [-3.1, 0.7, 'cypress', 1.05, 1],
+  ]
+  return spots.map(([lx, lz, kind, scale, tint], i) => ({ ...at(lx, lz), kind, scale, rot: i * 1.7, tint }))
 }
 
 let scenery: ReturnType<typeof build> | null = null

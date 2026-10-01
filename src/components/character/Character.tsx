@@ -1,4 +1,4 @@
-import { Component, Suspense, type ReactNode } from 'react'
+import { Component, memo, Suspense, type ReactNode } from 'react'
 import { useWorldState } from '../../context/WorldStateContext'
 import { useReducedMotion } from '../../hooks/useMediaQuery'
 import { CharacterController } from './CharacterController'
@@ -16,6 +16,10 @@ class ModelBoundary extends Component<{ children: ReactNode }, { failed: boolean
     return this.state.failed ? null : this.props.children
   }
 }
+
+/** Rig and model are posed from refs each frame, so world-state renders need not touch them. */
+const Rig = memo(CharacterRig)
+const Model = memo(CharacterModel)
 
 export function Character() {
   const refs = useCharacterRefs()
@@ -37,16 +41,10 @@ export function Character() {
         color="#ffffff"
       />
       <CharacterController refs={refs} />
-      <CharacterRig
-        refs={refs}
-        accent={accentColor}
-        territory={activeTerritory}
-        state={characterState}
-        segments={segments}
-      />
+      <Rig refs={refs} accent={accentColor} territory={activeTerritory} state={characterState} segments={segments} />
       <ModelBoundary>
         <Suspense fallback={null}>
-          <CharacterModel refs={refs} />
+          <Model refs={refs} />
         </Suspense>
       </ModelBoundary>
     </group>

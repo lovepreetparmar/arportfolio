@@ -3,23 +3,26 @@ import { useWorldState } from '../../../context/WorldStateContext'
 import { getWorldBenches, type BenchSpot } from '../../../data/worldBenches'
 import { useReducedMotion } from '../../../hooks/useMediaQuery'
 import { Bench } from './Bench'
-import { useSitting } from './SittingContext'
+import { publishSeatedBench, useSitting } from './SittingContext'
 import { stepSitting } from './SittingState'
 
 /** Runs the sitting state machine; mount before the character so she reads this frame's phase. */
 export function SittingDirector() {
   const { sittingRef } = useSitting()
-  const { characterRef, targetRef, journeyPhase } = useWorldState()
+  const { characterRef, targetRef, routeRef, journeyPhase } = useWorldState()
   const reduced = useReducedMotion()
 
   useFrame((_, delta) => {
+    const route = routeRef.current
     stepSitting(sittingRef.current, {
       character: characterRef.current,
-      target: targetRef.current,
+      // Where the walk ends, so a bench reached along a path counts from the first step.
+      target: route.length ? route[route.length - 1] : targetRef.current,
       exploring: journeyPhase === 'world',
       delta: Math.min(delta, 0.1),
       reduced,
     })
+    publishSeatedBench(sittingRef.current)
   })
 
   return null

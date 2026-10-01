@@ -59,6 +59,12 @@ export function Bench({ bench, onSelect }: BenchProps) {
           </mesh>
         </group>
       ))}
+      {onSelect && (
+        <mesh position={[0, 0.42, -0.04]}>
+          <boxGeometry args={[1.45, 0.84, 0.6]} />
+          <meshBasicMaterial visible={false} />
+        </mesh>
+      )}
     </group>
   )
 }

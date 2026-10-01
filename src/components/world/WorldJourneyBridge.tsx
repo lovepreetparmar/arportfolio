@@ -1,7 +1,6 @@
 import { useFrame } from '@react-three/fiber'
 import { useRef } from 'react'
-import { getProjectBySlug } from '../../data/projects'
-import { getProjectEntrance } from '../../data/projectWorld'
+import { getPlaceEntrance } from '../../data/worldLocations'
 import { useWorldState } from '../../context/WorldStateContext'
 import { ARRIVAL_THRESHOLD, horizontalDistance } from '../../navigation/worldNavigation'
 
@@ -25,9 +24,8 @@ export function WorldJourneyBridge() {
     }
     if (fired.current || moving || routeRef.current.length > 0) return
 
-    const project = getProjectBySlug(pendingProjectSlug)
-    if (!project) return
-    const entrance = getProjectEntrance(project)
+    const entrance = getPlaceEntrance(pendingProjectSlug)
+    if (!entrance) return
     const dist = horizontalDistance(character, entrance)
     if (dist <= ARRIVAL_THRESHOLD) {
       fired.current = true

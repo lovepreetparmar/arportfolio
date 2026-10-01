@@ -7,4 +7,5 @@ export const site = {
   linkedin: 'https://www.linkedin.com/in/anushriraina6696',
   email: '', // TODO: verified email
   bio: `Anushri Raina is a Senior Graphic Designer based in Jammu, India, at Asura Studios. She works across brand identity, visual communication, digital design, and print.`,
+  disciplines: ['Brand Identity', 'Typography', 'Editorial', 'Art Direction', 'Digital Design', 'Campaigns'],
 }

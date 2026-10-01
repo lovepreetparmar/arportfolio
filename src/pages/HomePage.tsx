@@ -1,10 +1,9 @@
-import { useCallback, useState } from 'react'
+import { useCallback } from 'react'
 import { WorldStateProvider, useWorldState } from '../context/WorldStateContext'
 import { World } from '../components/world/World'
 import { WorldUI } from '../components/Navigation/WorldUI'
-import { MapOpening } from '../components/map/MapOpening'
+import { WorldIntro } from '../components/world/WorldIntro'
 import { ProjectView } from '../components/Project/ProjectView'
-import { AboutPanel } from '../components/Project/AboutPanel'
 import { RoomArtworkViewer } from '../components/project-room/RoomArtworkViewer'
 import { RoomTransitionOverlay } from '../components/project-room/RoomTransitionOverlay'
 import { useWorldJourneyOrchestrator } from '../hooks/useWorldJourneyOrchestrator'
@@ -17,53 +16,24 @@ function WorldExperience() {
   useWorldJourneyOrchestrator()
   useJourneyAudio()
   const reduced = useReducedMotion()
-  const [opened, setOpened] = useState(false)
-  const [aboutOpen, setAboutOpen] = useState(false)
-  const { saveWorld, navigateToProject, legacyProjectSlug, clearLegacyProjectView } = useWorldState()
+  const { navigateToProject, legacyProjectSlug, clearLegacyProjectView } = useWorldState()
 
-  const openProject = useCallback(
-    (slug: string) => {
-      if (slug === '__about__') {
-        saveWorld()
-        setAboutOpen(true)
-        return
-      }
-      navigateToProject(slug)
-    },
-    [saveWorld, navigateToProject],
-  )
-
-  const closeProject = useCallback(() => {
-    clearLegacyProjectView()
-    setAboutOpen(false)
-  }, [clearLegacyProjectView])
-
-  const closeAbout = useCallback(() => {
-    setAboutOpen(false)
-    clearLegacyProjectView()
-  }, [clearLegacyProjectView])
+  const openProject = useCallback((slug: string) => navigateToProject(slug), [navigateToProject])
 
   return (
     <>
-      {!opened && <MapOpening onDone={() => setOpened(true)} />}
+      <WorldIntro />
       <World onSelectProject={openProject} />
       <RoomTransitionOverlay />
-      <WorldUI
-        onFlyToContact={() => {
-          saveWorld()
-          setAboutOpen(true)
-        }}
-        onOpenProjectDirect={reduced ? openProject : undefined}
-      />
+      <WorldUI onOpenProjectDirect={reduced ? openProject : undefined} />
       <RoomArtworkViewer />
       {legacyProjectSlug && (
         <ProjectView
           slug={legacyProjectSlug}
-          onClose={closeProject}
+          onClose={clearLegacyProjectView}
           onNextTerritory={(slug) => navigateToProject(slug)}
         />
       )}
-      {aboutOpen && <AboutPanel onClose={closeAbout} />}
     </>
   )
 }

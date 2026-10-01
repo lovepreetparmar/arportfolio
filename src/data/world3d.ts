@@ -1,9 +1,7 @@
 import type { Project } from './projects'
-import { CONTACT_POSITION, getWorldSlot, WORLD_SPAWN } from './worldLayout'
+import { getWorldSlot, WORLD_SPAWN } from './worldLayout'
 
 export const characterSpawn = WORLD_SPAWN
-
-export const contactWorld = CONTACT_POSITION
 
 export function getProjectWorld3(project: Project) {
   const slot = getWorldSlot(project.slug)

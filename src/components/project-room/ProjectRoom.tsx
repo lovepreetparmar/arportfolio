@@ -1,6 +1,6 @@
 import { useTexture } from '@react-three/drei'
 import { useFrame, useThree, type ThreeEvent } from '@react-three/fiber'
-import { Suspense, useEffect, useMemo, useRef } from 'react'
+import { memo, Suspense, useEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { audioManager } from '../../audio/AudioManager'
 import { useCursor } from '../../context/CursorContext'
@@ -65,7 +65,7 @@ function useWalkHandler() {
 }
 
 /** Walls, floor and ceiling; clicking any of them walks her to the nearest open floor. */
-function RoomShell({ theme }: { theme: ProjectRoomTheme }) {
+export function RoomShell({ theme }: { theme: ProjectRoomTheme }) {
   const handlers = useWalkHandler()
   const floorMap = useMemo(() => {
     const tex = floorTexture(theme.floorType, theme.floorColor)
@@ -152,7 +152,7 @@ const NIGHT_GLASS = new THREE.Color('#1c2440')
 const WHITE = new THREE.Color('#ffffff')
 
 /** Ceiling track lights (the visible source of the spots) and high frosted windows that follow the time of day. */
-function RoomFixtures({ theme }: { theme: ProjectRoomTheme }) {
+export const RoomFixtures = memo(function RoomFixtures({ theme }: { theme: ProjectRoomTheme }) {
   const glass = useMemo(() => new THREE.MeshStandardMaterial({ roughness: 0.6 }), [])
   useEffect(() => () => glass.dispose(), [glass])
   useFrame(() => {
@@ -209,10 +209,10 @@ function RoomFixtures({ theme }: { theme: ProjectRoomTheme }) {
       ))}
     </group>
   )
-}
+})
 
 /** The room's own door: the same hinged door as the buildings outside, and the way back out. */
-function RoomDoor({ theme }: { theme: ProjectRoomTheme }) {
+export function RoomDoor({ theme }: { theme: ProjectRoomTheme }) {
   const { insideRoom, doorOpenAmount, exitProjectRoom, journeyPhase } = useWorldState()
   const { setMode } = useCursor()
   const openRef = useRef(1)
@@ -401,11 +401,9 @@ function RoomExhibition({ project, config, theme }: { project: Project; config: 
  * A project's walk-in exhibition room, built inside the world scene. Anushri, the camera, the
  * controls, the day/night clock and the audio are the same ones as outside; only the place changes.
  */
-export function ProjectRoom({ slug }: { slug: string }) {
+/** Escape steps back out: first out of a framed artwork, then out of the room. */
+export function useRoomEscape() {
   const { exitProjectRoom } = useWorldState()
-  const project = getProjectBySlug(slug)
-  const config = useMemo(() => (project ? getProjectWorldConfig(project) : null), [project])
-
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape' || roomView.viewerIndex !== null) return
@@ -415,6 +413,12 @@ export function ProjectRoom({ slug }: { slug: string }) {
     window.addEventListener('keydown', onKey, { capture: true })
     return () => window.removeEventListener('keydown', onKey, { capture: true })
   }, [exitProjectRoom])
+}
+
+export function ProjectRoom({ slug }: { slug: string }) {
+  const project = getProjectBySlug(slug)
+  const config = useMemo(() => (project ? getProjectWorldConfig(project) : null), [project])
+  useRoomEscape()
 
   if (!project || !config) return null
   const theme = config.room

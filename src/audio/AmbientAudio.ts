@@ -12,6 +12,10 @@ export class AmbientAudio {
   private nightGain: GainNode | null = null
   private day = 1
   private night = 0
+  /** 0 in the open → 1 at a studio door: the outdoors softens as she reaches shelter. */
+  private shelter = 0
+  /** 0 → 1 at the sky viewpoint: quieter wind, the night closer. */
+  private viewpoint = 0
 
   private birds = new RandomScheduler(
     () => rand(4, 11) / Math.max(0.35, this.day),
@@ -21,9 +25,9 @@ export class AmbientAudio {
   )
 
   private crickets = new RandomScheduler(
-    () => rand(2.2, 6.5) / Math.max(0.35, this.night),
+    () => rand(2.2, 6.5) / Math.max(0.35, this.night * (1 + this.viewpoint)),
     () => {
-      if (this.night > 0.3) this.cricketSong()
+      if (this.night > 0.3 - 0.15 * this.viewpoint) this.cricketSong()
     },
   )
 
@@ -101,19 +105,29 @@ export class AmbientAudio {
     this.applyMix(0.8)
   }
 
+  /** Where she is: near a studio door (`shelter`) or at the sky viewpoint (`viewpoint`), each 0–1. */
+  setPlace(shelter: number, viewpoint: number) {
+    this.shelter = shelter
+    this.viewpoint = viewpoint
+    this.applyMix(1.2)
+  }
+
   private applyMix(seconds: number) {
     const ctx = this.ctx
     if (!ctx || !this.windGain || !this.dayGain || !this.nightGain) return
-    glide(this.windGain.gain, 0.55 + this.day * 0.3 + this.night * 0.1, ctx, seconds)
-    glide(this.dayGain.gain, this.day, ctx, seconds)
-    glide(this.nightGain.gain, this.night, ctx, seconds)
+    const open = (1 - 0.45 * this.shelter) * (1 - 0.5 * this.viewpoint)
+    glide(this.windGain.gain, (0.55 + this.day * 0.3 + this.night * 0.1) * open, ctx, seconds)
+    glide(this.dayGain.gain, this.day * (1 - 0.5 * this.shelter), ctx, seconds)
+    glide(this.nightGain.gain, this.night * (1 - 0.35 * this.shelter) * (1 + 0.6 * this.viewpoint), ctx, seconds)
   }
 
   private birdCall() {
     const ctx = this.ctx
     if (!ctx || !this.dayGain) return
     const pan = rand(-0.7, 0.7)
-    const base = rand(2500, 4200)
+    // Toward dusk the calls drop into a slower, lower evening song.
+    const evening = 1 - Math.min(1, this.day)
+    const base = rand(2500, 4200) * (1 - evening * 0.38)
     const notes = Math.floor(rand(2, 6))
     let at = ctx.currentTime + 0.05
     for (let i = 0; i < notes; i++) {
@@ -121,13 +135,13 @@ export class AmbientAudio {
       tone(ctx, this.dayGain, {
         at,
         frequency: f,
-        frequencyEnd: f * rand(1.15, 1.45),
-        duration: rand(0.06, 0.12),
-        peak: rand(0.05, 0.09),
-        attack: 0.01,
+        frequencyEnd: f * rand(1.15, 1.45 - evening * 0.25),
+        duration: rand(0.06, 0.12) * (1 + evening * 0.9),
+        peak: rand(0.05, 0.09) * (1 - evening * 0.3),
+        attack: 0.01 + evening * 0.02,
         pan,
       })
-      at += rand(0.09, 0.17)
+      at += rand(0.09, 0.17) * (1 + evening * 0.8)
     }
   }
 

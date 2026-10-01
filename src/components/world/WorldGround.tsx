@@ -1,14 +1,17 @@
 import type { ThreeEvent } from '@react-three/fiber'
 import { useWorldState } from '../../context/WorldStateContext'
+import { walkAround } from '../../data/worldPaths'
 import { wasDrag } from './mapNavigation'
 
 /** Invisible click plane: a click walks the character there; drags are left to map panning. */
 export function WorldGround() {
-  const { setTarget, setPointer } = useWorldState()
+  const { setTarget, setPointer, characterRef, routeRef, insideRoom } = useWorldState()
 
   const onClick = (e: ThreeEvent<MouseEvent>) => {
-    if (wasDrag(e)) return
-    setTarget({ x: e.point.x, y: 0, z: e.point.z })
+    if (wasDrag(e) || insideRoom) return
+    const [first, ...rest] = walkAround(characterRef.current, { x: e.point.x, z: e.point.z })
+    setTarget(first)
+    routeRef.current = rest
   }
 
   const onPointerMove = (e: ThreeEvent<PointerEvent>) => {

@@ -3,16 +3,19 @@ import { useWorldState, type JourneyPhase } from '../context/WorldStateContext'
 import { getProjectBySlug } from '../data/projects'
 import { getProjectWorldConfig } from '../data/projectWorld'
 import { audioManager } from './AudioManager'
-import { roomPresetFor } from './ProjectAudio'
+import { roomPresetFor, type RoomPreset } from './ProjectAudio'
+import { hasPlaceInterior } from '../data/worldLocations'
 
 const OUTSIDE = { world: 1, room: 0 }
 const ENTERING = { world: 0.6, room: 0.3 }
 const INSIDE = { world: 0.08, room: 1 }
 const LEAVING = { world: 0.6, room: 0.3 }
 
-function presetForSlug(slug: string | null) {
-  const project = slug ? getProjectBySlug(slug) : null
-  return project ? roomPresetFor(getProjectWorldConfig(project).locationType) : null
+function presetForSlug(slug: string | null): RoomPreset | null {
+  if (!slug) return null
+  const project = getProjectBySlug(slug)
+  if (project) return roomPresetFor(getProjectWorldConfig(project).locationType)
+  return hasPlaceInterior(slug) ? 'studio' : null
 }
 
 /**

@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useMemo, useRef } from 'react'
 import type { Group, Mesh } from 'three'
 
 export type CharacterRigRefs = {
@@ -48,27 +48,31 @@ export function useCharacterRefs(): CharacterRigRefs {
   const bag = useRef<Group>(null)
   const shadow = useRef<Mesh>(null)
 
-  return {
-    root,
-    hips,
-    spine,
-    chest,
-    head,
-    hair,
-    hairBack,
-    eyes,
-    leftShoulder,
-    leftArm,
-    leftHand,
-    rightShoulder,
-    rightArm,
-    rightHand,
-    leftLeg,
-    rightLeg,
-    leftKnee,
-    rightKnee,
-    blazer,
-    bag,
-    shadow,
-  }
+  // One object for the component's lifetime: effects keyed on it (the model's skinning) must not re-run per render.
+  return useMemo(
+    () => ({
+      root,
+      hips,
+      spine,
+      chest,
+      head,
+      hair,
+      hairBack,
+      eyes,
+      leftShoulder,
+      leftArm,
+      leftHand,
+      rightShoulder,
+      rightArm,
+      rightHand,
+      leftLeg,
+      rightLeg,
+      leftKnee,
+      rightKnee,
+      blazer,
+      bag,
+      shadow,
+    }),
+    [],
+  )
 }

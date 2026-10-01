@@ -2,7 +2,9 @@
  * Turns a raw image-to-3D character export into the web-ready model the world loads:
  * faces +z, stands on y = 0 at the target height, and is simplified to a light triangle budget.
  *
- *   node scripts/prepare-character.mjs <input.glb> [output.glb] [--yaw=-90] [--tris=40000]
+ *   node scripts/prepare-character.mjs <input.glb> [output.glb] [--yaw=-90] [--tris=40000] [--tex=0]
+ *
+ * `--tex` caps the base colour texture size (0 keeps it as exported).
  */
 import { NodeIO } from '@gltf-transform/core'
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions'
@@ -17,11 +19,12 @@ const flag = (name, fallback) => {
 }
 const [input, output = 'public/models/anushri-character.glb'] = args.filter((a) => !a.startsWith('--'))
 if (!input) {
-  console.error('usage: node scripts/prepare-character.mjs <input.glb> [output.glb] [--yaw=-90] [--tris=40000]')
+  console.error('usage: node scripts/prepare-character.mjs <input.glb> [output.glb] [--yaw=-90] [--tris=40000] [--tex=0]')
   process.exit(1)
 }
 const YAW = (flag('yaw', -90) * Math.PI) / 180
 const TARGET_TRIS = flag('tris', 40000)
+const TEX_SIZE = flag('tex', 0)
 const TARGET_HEIGHT = 1.62
 
 await MeshoptSimplifier.ready
@@ -92,12 +95,55 @@ for (const mat of root.listMaterials()) {
 }
 
 const ratio = Math.min(1, TARGET_TRIS / count())
+await doc.transform(weld(), simplify({ simplifier: MeshoptSimplifier, ratio, error: 0.002 }))
+
+// Some exports ship without normals. Smooth, area-weighted ones are summed per position so UV seams don't show.
+for (const mesh of root.listMeshes()) {
+  for (const prim of mesh.listPrimitives()) {
+    if (prim.getAttribute('NORMAL')) continue
+    const pos = prim.getAttribute('POSITION')
+    const idx = prim.getIndices()
+    const n = pos.getCount()
+    const key = new Int32Array(n)
+    const byPosition = new Map()
+    const p = [0, 0, 0]
+    for (let i = 0; i < n; i++) {
+      pos.getElement(i, p)
+      const k = `${Math.round(p[0] * 1e5)},${Math.round(p[1] * 1e5)},${Math.round(p[2] * 1e5)}`
+      if (!byPosition.has(k)) byPosition.set(k, i)
+      key[i] = byPosition.get(k)
+    }
+    const sum = new Float32Array(n * 3)
+    const a = [0, 0, 0]
+    const b = [0, 0, 0]
+    const c = [0, 0, 0]
+    for (let t = 0; t < idx.getCount(); t += 3) {
+      const ia = idx.getScalar(t)
+      const ib = idx.getScalar(t + 1)
+      const ic = idx.getScalar(t + 2)
+      pos.getElement(ia, a)
+      pos.getElement(ib, b)
+      pos.getElement(ic, c)
+      const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2]
+      const vx = c[0] - a[0], vy = c[1] - a[1], vz = c[2] - a[2]
+      const fn = [uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx]
+      for (const v of [ia, ib, ic]) for (let k = 0; k < 3; k++) sum[key[v] * 3 + k] += fn[k]
+    }
+    const out = new Float32Array(n * 3)
+    for (let i = 0; i < n; i++) {
+      const s = key[i] * 3
+      const l = Math.hypot(sum[s], sum[s + 1], sum[s + 2]) || 1
+      out.set([sum[s] / l, sum[s + 1] / l, sum[s + 2] / l], i * 3)
+    }
+    prim.setAttribute('NORMAL', doc.createAccessor().setType('VEC3').setArray(out).setBuffer(root.listBuffers()[0]))
+  }
+}
+
 await doc.transform(
-  weld(),
-  simplify({ simplifier: MeshoptSimplifier, ratio, error: 0.002 }),
   dedup(),
   prune(),
   textureCompress({ encoder: sharp, slots: /^normalTexture$/, resize: [1024, 1024] }),
+  ...(TEX_SIZE ? [textureCompress({ encoder: sharp, slots: /^baseColorTexture$/, targetFormat: 'jpeg', quality: 90, resize: [TEX_SIZE, TEX_SIZE] })] : []),
 )
 console.log(`output: ${Math.round(count())} triangles → ${output}`)
 await io.write(output, doc)

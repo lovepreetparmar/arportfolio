@@ -11,7 +11,8 @@ import {
 import { useTexture } from '@react-three/drei'
 import { characterSpawn } from '../data/world3d'
 import { getProjectBySlug } from '../data/projects'
-import { getProjectEntrance, getProjectWorldConfig, hasProjectInteriorRoom } from '../data/projectWorld'
+import { getProjectWorldConfig } from '../data/projectWorld'
+import { getPlaceEntrance, hasPlaceInterior, isPlace } from '../data/worldLocations'
 import { planRoute } from '../data/worldPaths'
 import type { CharacterState } from '../components/character/CharacterAnimations'
 import { ROOM_ARRIVAL, ROOM_DOORSTEP, isInRoomSpace, resetRoomView } from '../components/project-room/roomSpace'
@@ -95,9 +96,8 @@ const EXIT_DOORWAY = 0.9
 const EXIT_STEP_OUT = 0.9
 
 function entranceFrame(slug: string) {
-  const project = getProjectBySlug(slug)
-  if (!project) return null
-  const e = getProjectEntrance(project)
+  const e = getPlaceEntrance(slug)
+  if (!e) return null
   return { e, fx: Math.sin(e.doorYaw), fz: Math.cos(e.doorYaw) }
 }
 
@@ -157,6 +157,7 @@ export function WorldStateProvider({ children }: { children: ReactNode }) {
   const setTarget = useCallback((t: Vec3) => {
     if (isInRoomSpace(t.x, t.z) !== insideRef.current) return
     routeRef.current = []
+    targetRef.current = t
     setTargetState(t)
     setMoving(true)
     setLookAt(null)
@@ -165,6 +166,7 @@ export function WorldStateProvider({ children }: { children: ReactNode }) {
   const advanceRoute = useCallback(() => {
     const next = routeRef.current.shift()
     if (!next) return false
+    targetRef.current = next
     setTargetState(next)
     return true
   }, [])
@@ -241,10 +243,11 @@ export function WorldStateProvider({ children }: { children: ReactNode }) {
     setMoving(true)
   }, [setPhase])
 
+  /** Sends her to a place: a project building, or one of the studios (About, Contact). */
   const navigateToProject = useCallback(
     (slug: string) => {
-      const project = getProjectBySlug(slug)
-      if (!project) return
+      const entrance = getPlaceEntrance(slug)
+      if (!entrance || !isPlace(slug)) return
       const phase = phaseRef.current
       if (phase === 'inRoom') {
         if (slug !== roomSlugRef.current) {
@@ -256,20 +259,21 @@ export function WorldStateProvider({ children }: { children: ReactNode }) {
       if (phase !== 'world' && phase !== 'walking') return
       if (phase === 'walking' && pendingRef.current === slug) return
 
-      const config = getProjectWorldConfig(project)
-      if (config.hasInteriorRoom) useTexture.preload(config.gallery.map((g) => g.src))
+      const project = getProjectBySlug(slug)
+      const config = project ? getProjectWorldConfig(project) : null
+      if (config?.hasInteriorRoom) useTexture.preload(config.gallery.map((g) => g.src))
+      const interior = hasPlaceInterior(slug)
       saveWorld()
       setPending(slug)
       setLegacyProjectSlug(null)
       setRoomSlug(null)
       setDoorOpenAmount(0)
 
-      const entrance = getProjectEntrance(project)
       setCameraFocus({ x: entrance.buildingX, y: 1.2, z: entrance.buildingZ })
       setLookAt({ x: entrance.buildingX, y: 1.1, z: entrance.buildingZ })
 
       if (reduced) {
-        if (config.hasInteriorRoom) {
+        if (interior) {
           enterRoom(slug)
         } else {
           setPhase('world')
@@ -310,7 +314,7 @@ export function WorldStateProvider({ children }: { children: ReactNode }) {
   const beginProjectReveal = useCallback(() => {
     const slug = pendingRef.current
     if (!slug || phaseRef.current !== 'entering') return
-    if (hasProjectInteriorRoom(slug)) {
+    if (hasPlaceInterior(slug)) {
       enterRoom(slug)
       return
     }

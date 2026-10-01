@@ -30,11 +30,8 @@ export const WORLD_HUB = { x: 0, z: 0 }
 
 export const PLAZA_RADIUS = 3.2
 
-export const WORLD_SPAWN = { x: 0, y: 0, z: 1.2 }
-
-export const CONTACT_POSITION = { x: 0, y: 0, z: 46 }
-
-export const ABOUT_POSITION = { x: -19, y: 0, z: 11 }
+/** On the plaza just south of the landmark, so the opening shot has it behind her. */
+export const WORLD_SPAWN = { x: 0, y: 0, z: 2.2 }
 
 export const OPENING_FOCUS_SLUG = 'food-creatives'
 

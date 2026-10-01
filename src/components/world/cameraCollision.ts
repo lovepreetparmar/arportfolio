@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { ARCHETYPE_FOOTPRINT, worldProjectSlots, type BuildingArchetype } from '../../data/worldLayout'
+import { STUDIO_LOCATIONS } from '../../data/worldLocations'
 import { getWorldScenery } from '../../data/worldScenery'
 
 /** Roof ridge heights, slightly generous so the camera never grazes the eaves. */
@@ -17,18 +18,33 @@ export const MIN_COLLISION_DISTANCE = 1.6
 
 type Box = { x: number; z: number; cos: number; sin: number; hw: number; hd: number; h: number }
 
-const BOXES: Box[] = worldProjectSlots.map((s) => {
+const box = (s: (typeof worldProjectSlots)[number], pad: number): Box => {
   const fp = ARCHETYPE_FOOTPRINT[s.archetype]
   return {
     x: s.position.x,
     z: s.position.z,
     cos: Math.cos(s.rotation),
     sin: Math.sin(s.rotation),
-    hw: fp.width / 2 + CAMERA_RADIUS,
-    hd: fp.depth / 2 + CAMERA_RADIUS,
-    h: ROOF_HEIGHT[s.archetype] + CAMERA_RADIUS,
+    hw: fp.width / 2 + pad,
+    hd: fp.depth / 2 + pad,
+    h: ROOF_HEIGHT[s.archetype] + pad,
   }
+}
+const studioBox = (l: (typeof STUDIO_LOCATIONS)[number], pad: number): Box => ({
+  x: l.position.x,
+  z: l.position.z,
+  cos: Math.cos(l.rotation),
+  sin: Math.sin(l.rotation),
+  hw: l.footprint!.width / 2 + pad,
+  hd: l.footprint!.depth / 2 + pad,
+  h: l.footprint!.height + pad,
 })
+/** The buildings themselves, for whether they hide her; and with clearance, for where the camera may sit. */
+const WALLS: Box[] = [...worldProjectSlots.map((s) => box(s, 0)), ...STUDIO_LOCATIONS.map((l) => studioBox(l, 0))]
+const BOXES: Box[] = [
+  ...worldProjectSlots.map((s) => box(s, CAMERA_RADIUS)),
+  ...STUDIO_LOCATIONS.map((l) => studioBox(l, CAMERA_RADIUS)),
+]
 
 /** Tree canopies as ellipsoids (centre height and radii), inflated by the camera radius. */
 type Canopy = { x: number; y: number; z: number; r: number; ry: number }
@@ -95,17 +111,30 @@ function segmentEntry(box: Box, a: THREE.Vector3, b: THREE.Vector3): number | nu
   return startsInside ? null : t0
 }
 
+function insideBox(b: Box, p: THREE.Vector3) {
+  const dx = p.x - b.x
+  const dz = p.z - b.z
+  return (
+    Math.abs(dx * b.cos - dz * b.sin) < b.hw && Math.abs(dx * b.sin + dz * b.cos) < b.hd && p.y >= 0 && p.y < b.h
+  )
+}
+
 /**
- * Longest unobstructed pivot-to-camera distance along the desired camera ray. Buildings between
- * the camera and the character pull the camera in front of them; trees only do so when the
- * camera would otherwise sit inside a canopy, so passing foliage never yanks the view.
+ * Longest unobstructed pivot-to-camera distance along the desired camera ray. A building that
+ * actually hides her pulls the camera in front of it; one the ray merely grazes only does so
+ * when the camera itself would sit within its clearance. Trees likewise only act when the camera
+ * would otherwise sit inside a canopy, so passing foliage and corners never yank the view.
  */
 export function collisionDistance(pivot: THREE.Vector3, desired: THREE.Vector3): number {
   const len = pivot.distanceTo(desired)
   let t = 1
-  for (const box of BOXES) {
-    const hit = segmentEntry(box, pivot, desired)
+  for (let i = 0; i < WALLS.length; i++) {
+    const hit = segmentEntry(WALLS[i], pivot, desired)
     if (hit !== null && hit < t) t = hit
+    if (insideBox(BOXES[i], desired)) {
+      const near = segmentEntry(BOXES[i], pivot, desired)
+      if (near !== null && near < t) t = near
+    }
   }
   for (const canopy of CANOPIES) {
     if (!insideCanopy(canopy, desired)) continue

@@ -70,6 +70,14 @@ type MapViewState = {
   /** Ground point the camera is currently framing (for sun / shadow / fog follow). */
   focusX: number
   focusZ: number
+  /** Orbit carried on after a flick (rad/s), fading out. */
+  spinAzimuth: number
+  spinPolar: number
+  /**
+   * Opening reveal: -1 holding on the close-up, otherwise performance.now() when the ease out began;
+   * 0 once it is over or the visitor takes the camera.
+   */
+  revealStart: number
 }
 
 /** Shared per-frame camera state (single world canvas). */
@@ -89,6 +97,49 @@ export const mapView: MapViewState = {
   gestured: false,
   focusX: 0,
   focusZ: 0,
+  spinAzimuth: 0,
+  spinPolar: 0,
+  revealStart: 0,
+}
+
+/** Opening shot: close behind her and low, then easing out to the default view over REVEAL_SECONDS. */
+export const REVEAL_SECONDS = 3.4
+export const REVEAL_FROM = { zoom: 0.42, polar: 1.34, azimuth: -0.6 }
+
+/** Holds the camera on the opening close-up until `startReveal`. */
+export function prepareReveal() {
+  mapView.revealStart = -1
+}
+
+/** Starts easing from the close-up out to the default view. */
+export function startReveal() {
+  if (mapView.revealStart === -1) mapView.revealStart = performance.now()
+}
+
+/** Drops a reveal that never started, so the camera is not left on the close-up. */
+export function cancelReveal() {
+  if (mapView.revealStart === -1) mapView.revealStart = 0
+}
+
+/** 0 on the close-up → 1 at the default view; 1 when no reveal is running. */
+export function revealProgress(now: number) {
+  const start = mapView.revealStart
+  if (start === 0) return 1
+  if (start < 0) return 0
+  const k = Math.min(1, (now - start) / 1000 / REVEAL_SECONDS)
+  if (k >= 1) mapView.revealStart = 0
+  return k * k * k * (k * (k * 6 - 15) + 10)
+}
+
+/** The visitor took the camera: any reveal or flick stops where it is. */
+export function takeCameraControl() {
+  if (mapView.revealStart) {
+    mapView.revealStart = 0
+    mapView.targetZoom = mapView.zoom
+    mapView.targetPolar = mapView.polar
+    mapView.targetAzimuth = mapView.azimuth
+  }
+  mapView.spinAzimuth = mapView.spinPolar = 0
 }
 
 export function clampZoom(z: number) {

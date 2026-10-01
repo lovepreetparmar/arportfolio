@@ -1,9 +1,9 @@
 import { Html } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
-import { useMemo, useRef, useState } from 'react'
+import { memo, useMemo, useRef, useState } from 'react'
 import type { Project } from '../../../data/projects'
-import { getProjectWorldConfig } from '../../../data/projectWorld'
-import { ARCHETYPE_FOOTPRINT, getWorldSlot, type BuildingArchetype } from '../../../data/worldLayout'
+import { getProjectWorldConfig, type ProjectWorldConfig } from '../../../data/projectWorld'
+import { ARCHETYPE_FOOTPRINT, getWorldSlot, type BuildingArchetype, type WorldProjectSlot } from '../../../data/worldLayout'
 import { useCursor } from '../../../context/CursorContext'
 import { useWorldState } from '../../../context/WorldStateContext'
 import { damp } from '../../character/CharacterAnimations'
@@ -26,6 +26,26 @@ type ProjectLocationProps = {
   onSelect: (slug: string) => void
 }
 
+/** The building itself never depends on journey state, so it skips the re-render on each of her steps. */
+const Building = memo(function Building({
+  slot,
+  project,
+  config,
+}: {
+  slot: WorldProjectSlot
+  project: Project
+  config: ProjectWorldConfig
+}) {
+  return (
+    <>
+      {slot.archetype === 'boutique' && <JewelleryBoutique project={project} config={config} />}
+      {slot.archetype === 'kitchen' && <FoodKitchen project={project} config={config} />}
+      {slot.archetype === 'studio' && <DesignStudio project={project} config={config} />}
+      {slot.archetype === 'pavilion' && <ProjectPavilion project={project} config={config} style={slot.style} tone={slot.tone} />}
+    </>
+  )
+})
+
 /** A project's building in the world: placement, hover label, click-to-visit and door state. */
 export function ProjectLocation({ project, onSelect }: ProjectLocationProps) {
   const slot = getWorldSlot(project.slug)
@@ -45,7 +65,10 @@ export function ProjectLocation({ project, onSelect }: ProjectLocationProps) {
 
   if (!slot) return null
   const fp = ARCHETYPE_FOOTPRINT[slot.archetype]
-  const showLabel = (hovered && journeyPhase === 'world') || isActive || (nearProjectSlug === project.slug && journeyPhase === 'world')
+  const showLabel =
+    (hovered && journeyPhase === 'world') ||
+    (isActive && journeyPhase === 'walking') ||
+    (nearProjectSlug === project.slug && journeyPhase === 'world')
 
   return (
     <LocationContext.Provider value={ctx}>
@@ -69,10 +92,7 @@ export function ProjectLocation({ project, onSelect }: ProjectLocationProps) {
           onSelect(project.slug)
         }}
       >
-        {slot.archetype === 'boutique' && <JewelleryBoutique project={project} config={config} />}
-        {slot.archetype === 'kitchen' && <FoodKitchen project={project} config={config} />}
-        {slot.archetype === 'studio' && <DesignStudio project={project} config={config} />}
-        {slot.archetype === 'pavilion' && <ProjectPavilion project={project} config={config} style={slot.style} tone={slot.tone} />}
+        <Building slot={slot} project={project} config={config} />
 
         <Html
           position={[0, LABEL_HEIGHT[slot.archetype], fp.depth / 2]}

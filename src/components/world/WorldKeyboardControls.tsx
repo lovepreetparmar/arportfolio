@@ -10,6 +10,8 @@ const BACK = ['s', 'arrowdown']
 const LEFT = ['a', 'arrowleft']
 const RIGHT = ['d', 'arrowright']
 const STEP_AHEAD = 0.9
+/** On release she carries on this far and eases to a stop instead of halting mid-stride. */
+const SETTLE = 0.3
 
 const forward = new THREE.Vector3()
 const right = new THREE.Vector3()
@@ -21,19 +23,31 @@ export function WorldKeyboardControls() {
   const { camera } = useThree()
   const { character, setTarget, journeyPhase, insideRoom } = useWorldState()
   const steering = useRef(false)
+  const lastDir = useRef({ x: 0, z: 0 })
 
   useFrame(() => {
     const pressed = keys.current
     const any = (list: string[]) => list.some((k) => pressed.has(k))
     const ix = (any(RIGHT) ? 1 : 0) - (any(LEFT) ? 1 : 0)
     const iz = (any(FORWARD) ? 1 : 0) - (any(BACK) ? 1 : 0)
-    const free = journeyPhase === 'world' || (journeyPhase === 'inRoom' && insideRoom)
+    const outdoor =
+      !insideRoom &&
+      (journeyPhase === 'world' ||
+        journeyPhase === 'walking' ||
+        journeyPhase === 'arrived' ||
+        journeyPhase === 'exiting')
+    const free = outdoor || (journeyPhase === 'inRoom' && insideRoom)
 
     if (!free || (ix === 0 && iz === 0)) {
       if (steering.current) {
         steering.current = false
-        // A journey that took over owns her target; only a released key stops her on the spot.
-        if (free) setTarget({ x: character.x, y: 0, z: character.z })
+        // A journey that took over owns her target; only a released key settles her where she is.
+        if (free) {
+          let sx = character.x + lastDir.current.x * SETTLE
+          let sz = character.z + lastDir.current.z * SETTLE
+          if (insideRoom) [sx, sz] = constrainToRoom(sx, sz)
+          setTarget({ x: sx, y: 0, z: sz })
+        }
       }
       return
     }
@@ -46,6 +60,7 @@ export function WorldKeyboardControls() {
     const dz = forward.z * iz + right.z * ix
     const len = Math.hypot(dx, dz) || 1
     steering.current = true
+    lastDir.current = { x: dx / len, z: dz / len }
     let tx = character.x + (dx / len) * STEP_AHEAD
     let tz = character.z + (dz / len) * STEP_AHEAD
     if (insideRoom) {

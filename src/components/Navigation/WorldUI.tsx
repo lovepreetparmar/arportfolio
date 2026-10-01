@@ -1,33 +1,44 @@
 import { useState } from 'react'
 import { getProjectBySlug, projects } from '../../data/projects'
-import { getProjectWorldConfig } from '../../data/projectWorld'
 import { isDark } from '../project-room/roomTextures'
+import { contactLinks } from '../project-room/studio/studioData'
 import { site } from '../../data/site'
 import { useWorldState } from '../../context/WorldStateContext'
-import { contactWorld } from '../../data/world3d'
-import { ABOUT_POSITION } from '../../data/worldLayout'
+import { getPlaceRoomTheme, getWorldLocation, VIEWPOINT } from '../../data/worldLocations'
+import { useSeatedBench } from '../world/benches/SittingContext'
 import { useDayNight } from '../world/daynight/DayNightController'
 import { WorldToggles } from './WorldToggles'
 
 type WorldUIProps = {
-  onFlyToContact: () => void
   /** Reduced-motion: optional direct open from index. */
   onOpenProjectDirect?: (slug: string) => void
 }
 
-export function WorldUI({ onFlyToContact, onOpenProjectDirect }: WorldUIProps) {
-  const { setTarget, navigateToProject, journeyPhase, insideRoom, roomProjectSlug } = useWorldState()
-  const roomProject = insideRoom && roomProjectSlug ? getProjectBySlug(roomProjectSlug) : undefined
-  const darkRoom = !!roomProject && isDark(getProjectWorldConfig(roomProject).room.wallColor)
+function roomHint(slug: string | null) {
+  const type = slug ? getWorldLocation(slug)?.type : undefined
+  if (type === 'about') return 'Drag to look · Click the door to leave'
+  if (type === 'contact') return 'Choose a link to open it · Click the door to leave'
+  return 'Click artwork to look closer · Drag to look · Click the door to leave'
+}
+
+export function WorldUI({ onOpenProjectDirect }: WorldUIProps) {
+  const { navigateToProject, journeyPhase, insideRoom, roomProjectSlug, pendingProjectSlug } = useWorldState()
+  const roomTheme = insideRoom ? getPlaceRoomTheme(roomProjectSlug) : null
+  const darkRoom = !!roomTheme && isDark(roomTheme.wallColor)
   const traveling = journeyPhase === 'walking' || journeyPhase === 'arrived' || journeyPhase === 'doorOpening'
-  const hint = insideRoom
-    ? 'Click artwork to look closer · Drag to look · Click the door to leave'
-    : traveling
-      ? 'Walking to project…'
-      : 'Select a location · Click to walk · Drag to look · WASD to move'
-  const [indexOpen, setIndexOpen] = useState(false)
   const { dark: night } = useDayNight()
-  const dark = roomProject ? darkRoom : night
+  const atViewpoint = useSeatedBench() === VIEWPOINT.id && journeyPhase === 'world'
+  const hint = insideRoom
+    ? roomHint(roomProjectSlug)
+    : traveling
+      ? getProjectBySlug(pendingProjectSlug ?? '')
+        ? 'Walking to project…'
+        : 'Walking…'
+      : atViewpoint
+        ? `Drag up to look at the ${night ? 'stars' : 'sky'} · Click to walk on`
+        : 'Select a location · Click to walk · Drag to look'
+  const [indexOpen, setIndexOpen] = useState(false)
+  const dark = roomTheme ? darkRoom : night
 
   return (
     <>
@@ -37,30 +48,42 @@ export function WorldUI({ onFlyToContact, onOpenProjectDirect }: WorldUIProps) {
         <div className="pointer-events-auto flex items-start justify-between">
           <p className="text-sm font-semibold tracking-tight">ANUSHRI RAINA</p>
           <div className="flex gap-6 text-xs tracking-[0.25em] uppercase">
-            <button
-              type="button"
-              onClick={() => {
-                setTarget({ x: ABOUT_POSITION.x, y: 0, z: ABOUT_POSITION.z })
-                onFlyToContact()
-              }}
-            >
+            <button type="button" onClick={() => navigateToProject('about')}>
               About
             </button>
             <button type="button" onClick={() => setIndexOpen(true)}>Index</button>
           </div>
         </div>
         <div className="flex items-end justify-between">
-          <p
-            className={`text-[10px] tracking-[0.3em] uppercase transition-colors duration-1000 ${dark ? 'text-[#b9b4c4]' : roomProject ? 'text-ink/75' : 'text-muted'}`}
-          >
-            {hint}
-          </p>
+          <div>
+            {insideRoom && roomProjectSlug === 'contact' && (
+              <ul className="pointer-events-auto mb-3 flex gap-5 text-xs tracking-[0.2em] uppercase">
+                {contactLinks().map((l) => (
+                  <li key={l.href}>
+                    <a
+                      href={l.href}
+                      target={l.href.startsWith('mailto:') ? undefined : '_blank'}
+                      rel="noopener noreferrer"
+                      className="underline-offset-4 hover:underline"
+                    >
+                      {l.label} ↗
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <p
+              className={`text-[10px] tracking-[0.3em] uppercase transition-colors duration-1000 ${dark ? 'text-[#b9b4c4]' : roomTheme ? 'text-ink/75' : 'text-muted'}`}
+            >
+              {hint}
+            </p>
+          </div>
           <div className="pointer-events-auto flex items-center gap-5">
             <WorldToggles />
             <button
               type="button"
               className="text-xs tracking-[0.2em] uppercase"
-              onClick={() => setTarget({ x: contactWorld.x, y: 0, z: contactWorld.z })}
+              onClick={() => navigateToProject('contact')}
             >
               Contact
             </button>

@@ -12,10 +12,16 @@ import {
   clampPolar,
   clampZoom,
   mapView,
+  takeCameraControl,
 } from './mapNavigation'
+import { useReducedMotion } from '../../hooks/useMediaQuery'
 
 /** Screen-space perspective: vertical drags cover more ground than horizontal ones. */
 const VERTICAL_PAN_BOOST = 1.45
+/** A release this long after the last movement is a placed stop, not a flick. */
+const FLICK_WINDOW_MS = 90
+/** Fastest carried-on orbit after a flick (rad/s). */
+const MAX_SPIN = 1.8
 
 type DragKind = 'orbit' | 'pan'
 
@@ -29,6 +35,9 @@ export function WorldMapControls() {
   const { journeyPhase } = useWorldState()
   const phaseRef = useRef(journeyPhase)
   phaseRef.current = journeyPhase
+  const reduced = useReducedMotion()
+  const reducedRef = useRef(reduced)
+  reducedRef.current = reduced
 
   useEffect(() => {
     const el = gl.domElement
@@ -39,6 +48,8 @@ export function WorldMapControls() {
     let drag: DragKind | null = null
     let last = { x: 0, y: 0 }
     let pinchDist = 0
+    /** Smoothed orbit speed of the current drag (rad/s) and when it last moved. */
+    let velocity = { az: 0, polar: 0, at: 0 }
 
     const canNavigate = () => phaseRef.current === 'world' || phaseRef.current === 'walking' || phaseRef.current === 'inRoom'
     const canPan = () => phaseRef.current !== 'inRoom'
@@ -48,10 +59,15 @@ export function WorldMapControls() {
       e.preventDefault()
       const px = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaMode === 2 ? e.deltaY * 400 : e.deltaY
       const step = Math.max(-240, Math.min(240, px))
+      takeCameraControl()
       mapView.targetZoom = clampZoom(mapView.targetZoom * Math.exp(step * ZOOM_SPEED))
     }
 
     const endDrag = () => {
+      if (drag === 'orbit' && !reducedRef.current && performance.now() - velocity.at < FLICK_WINDOW_MS) {
+        mapView.spinAzimuth = Math.max(-MAX_SPIN, Math.min(MAX_SPIN, velocity.az))
+        mapView.spinPolar = Math.max(-MAX_SPIN, Math.min(MAX_SPIN, velocity.polar)) * 0.5
+      }
       drag = null
       el.style.cursor = ''
       mapView.dragging = false
@@ -64,7 +80,10 @@ export function WorldMapControls() {
         press = { id: e.pointerId, x: e.clientX, y: e.clientY, pan: e.shiftKey }
         last = { x: e.clientX, y: e.clientY }
         mapView.gestured = false
+        mapView.spinAzimuth = mapView.spinPolar = 0
+        velocity = { az: 0, polar: 0, at: 0 }
       } else if (pointers.size === 2) {
+        takeCameraControl()
         const [a, b] = [...pointers.values()]
         pinchDist = Math.hypot(a.x - b.x, a.y - b.y)
         drag = null
@@ -76,6 +95,13 @@ export function WorldMapControls() {
     const orbit = (dx: number, dy: number) => {
       mapView.targetAzimuth -= dx * ORBIT_SPEED
       mapView.targetPolar = clampPolar(mapView.targetPolar - dy * ORBIT_SPEED_VERTICAL)
+      const now = performance.now()
+      const dt = Math.max(8, now - (velocity.at || now - 16)) / 1000
+      velocity = {
+        az: velocity.az * 0.5 + ((-dx * ORBIT_SPEED) / dt) * 0.5,
+        polar: velocity.polar * 0.5 + ((-dy * ORBIT_SPEED_VERTICAL) / dt) * 0.5,
+        at: now,
+      }
     }
 
     const pan = (dx: number, dy: number) => {
@@ -108,6 +134,7 @@ export function WorldMapControls() {
       if (!drag) {
         if (Math.hypot(e.clientX - press.x, e.clientY - press.y) < DRAG_THRESHOLD) return
         drag = press.pan && e.pointerType === 'mouse' && canPan() ? 'pan' : 'orbit'
+        takeCameraControl()
         mapView.dragging = true
         mapView.gestured = true
         last = { x: e.clientX, y: e.clientY }

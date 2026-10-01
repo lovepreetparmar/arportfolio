@@ -1,4 +1,5 @@
 import { distanceToPaths, getPathBranches } from './worldPaths'
+import { VIEWPOINT } from './worldLocations'
 import { ARCHETYPE_FOOTPRINT, PLAZA_RADIUS, WORLD_HUB, worldProjectSlots } from './worldLayout'
 
 export type BenchSpot = {
@@ -49,7 +50,7 @@ function build(): BenchSpot[] {
     return { id: `plaza-${i}`, x, z, rot: Math.atan2(WORLD_HUB.x - x, WORLD_HUB.z - z), scenic: false }
   })
 
-  const branches = getPathBranches()
+  const branches = getPathBranches('project')
   for (const r of ROADSIDE) {
     const branch = branches.find((b) => b.slug === r.slug)
     if (!branch) continue
@@ -62,7 +63,7 @@ function build(): BenchSpot[] {
       const nz = ((q.x - p.x) / len) * r.side
       const x = p.x + nx * ROADSIDE_OFFSET
       const z = p.z + nz * ROADSIDE_OFFSET
-      if (distanceToPaths({ x, z }) < ROADSIDE_OFFSET - 0.15) continue
+      if (distanceToPaths({ x, z }, 'project') < ROADSIDE_OFFSET - 0.15) continue
       if (Math.hypot(x - WORLD_HUB.x, z - WORLD_HUB.z) < PLAZA_RADIUS + 2) continue
       if (!clearOfBuildings(x, z, 1)) continue
       benches.push({ id: `roadside-${r.slug}`, x, z, rot: Math.atan2(-nx, -nz), scenic: true })
@@ -72,10 +73,21 @@ function build(): BenchSpot[] {
   return benches
 }
 
+let pathBenches: BenchSpot[] | null = null
 let benches: BenchSpot[] | null = null
 
+/** The plaza and roadside benches, which the seeded scenery scatter was planned around. */
+export function getPathBenches(): BenchSpot[] {
+  if (!pathBenches) pathBenches = build()
+  return pathBenches
+}
+
+/** Every sittable bench, including the one at the viewpoint. */
 export function getWorldBenches(): BenchSpot[] {
-  if (!benches) benches = build()
+  if (!benches) {
+    const { position, rotation } = VIEWPOINT
+    benches = [...getPathBenches(), { id: 'viewpoint', x: position.x, z: position.z, rot: rotation, scenic: false }]
+  }
   return benches
 }
 
@@ -95,8 +107,8 @@ export function getBenchAnchors(b: BenchSpot) {
 }
 
 /** Distance to the nearest bench, for keeping scenery clear of them. */
-export function distanceToBenches(x: number, z: number) {
+export function distanceToBenches(x: number, z: number, list: BenchSpot[] = getWorldBenches()) {
   let best = Infinity
-  for (const b of getWorldBenches()) best = Math.min(best, Math.hypot(b.x - x, b.z - z))
+  for (const b of list) best = Math.min(best, Math.hypot(b.x - x, b.z - z))
   return best
 }
